@@ -1,9 +1,0 @@
-BD_HOST=localhost
-BD_USER=root
-BD_PASSWORD=987123
-BD_DATABASE=prueba
-
-MONGO_URI=mongodb://localhost:27017
-MONGO_DB=test
-
-PORT=3000

@@ -1,7 +1,6 @@
 import express from "express";
 import "dotenv/config";
 import { connectMongo, mongoDb } from "./config/mongodb.config";
-import { mysqlPool } from "./config/db.config";
 import userRoutes from "./routers/user.router";
 
 const app = express();
@@ -13,7 +12,6 @@ app.use("/api/users", userRoutes)
 
 app.get("/", async (req, res) => {
     try {
-        const [rows] : any = await mysqlPool.query("SELECT NOW() AS fecha");
 
         const db = mongoDb();
         const mongoPing = await db.command({ ping: 1 });
@@ -21,7 +19,6 @@ app.get("/", async (req, res) => {
         res.json({
             mensaje: `Servidor funcionando correctamente`,
             fecha_servidor: new Date(),
-            mysql_fecha: rows[0].fecha,
             mongo_ping: mongoPing.ok,
             suma: 1 + 1
         });
@@ -36,8 +33,7 @@ app.get("/", async (req, res) => {
 async function startServer() {
     try {
         await connectMongo();
-        await mysqlPool.getConnection();
-        console.log("MySQL conectado ✔");
+        console.log("Mongo conectado ");
 
         app.listen(PORT, () => {
             console.log(`Servidor corriendo en el puerto ${PORT}`);
