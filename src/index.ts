@@ -8,6 +8,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
+
 app.use("/api/users", userRoutes)
 
 app.get("/", async (req, res) => {
@@ -29,6 +30,8 @@ app.get("/", async (req, res) => {
         });
     }
 });
+
+
 
 async function startServer() {
     try {
