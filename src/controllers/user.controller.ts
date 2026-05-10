@@ -1,13 +1,15 @@
 import { Request, Response, NextFunction } from "express";
-import { UsuariosService } from "../services/user.service";
+import { UserService } from "../services/user.service";
 
 
-export class UsuariosController {
-    static async obtenerTodos(req: Request, res: Response, next: NextFunction) {
+export class UsersController {    
+    static async createUser(req: Request, res: Response, next: NextFunction) {
         try {
-            const usuarios = await UsuariosService.obtenerTodos();
-            res.json(usuarios);
-        } catch (err) {
+            const user = await UserService.createUser(req.body);
+
+            return res.status(201).json(user);
+        } 
+        catch (err) {
             next(err);
         }
     }
