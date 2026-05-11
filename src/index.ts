@@ -2,14 +2,16 @@ import express from "express";
 import "dotenv/config";
 import { connectMongo, mongoDb } from "./config/mongodb.config";
 import userRoutes from "./routers/user.router";
+import districtRoutes from "./routers/district.router";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+app.use("/api/users", userRoutes);
+app.use("/api/districts", districtRoutes);
 
 
-app.use("/api/users", userRoutes)
 
 app.get("/", async (req, res) => {
     try {
@@ -30,7 +32,6 @@ app.get("/", async (req, res) => {
         });
     }
 });
-
 
 
 async function startServer() {
