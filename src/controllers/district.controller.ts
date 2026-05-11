@@ -30,4 +30,17 @@ export class DistrictController {
             next(err);
         }
     }
+    // POST /districts
+    // Los datos llegan por body
+    static async createDistrict(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { name, polygon } = req.body;
+            const district = await DistrictService.createDistrict({ name, polygon });
+            // 201 = Created, es el código correcto para un POST exitoso
+            res.status(201).json(district);
+        } catch (err) {
+            next(err);
+        }
+    }
+
 }

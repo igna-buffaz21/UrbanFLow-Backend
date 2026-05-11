@@ -22,14 +22,14 @@ interface DistrictDetailResponse {
     updatedAt: Date;
 }
 
-/*// Lo que devuelve el GET /districts/:id (con polygon completo)
+// Lo que devuelve el GET /districts/:id (con polygon completo)
 interface DistrictDetailResponse {
     id: string;
     name: string;
     polygon: District["polygon"]; // tomamos el tipo polygon directo del modelo
     createdAt: Date;
     updatedAt: Date;
-}*/
+}
 
 // --- Repository ---
 
@@ -89,6 +89,48 @@ export class DistrictRepository {
             return (result[0] as unknown as DistrictDetailResponse) ?? null;
         } catch (err) {
             throw new Error(`Error al obtener el distrito: ${err}`);
+        }
+    }
+
+    // GET district por nombre (para validar duplicados)
+    static async getDistrictByName(name: string): Promise<District | null> {
+        try {
+            const db = mongoDb();
+            const district = await db
+                .collection<District>(COLLECTION_NAME)
+                .findOne({ name: name });
+
+            return district;
+        } catch (err) {
+            throw new Error(`Error al buscar el distrito por nombre: ${err}`);
+        }
+    }
+
+    // POST /districts
+    static async createDistrict(
+        data: Omit<District, "_id">  // Omit<> = el tipo District pero SIN el campo _id
+    ): Promise<DistrictDetailResponse> {
+        try {
+            const db = mongoDb();
+
+            // insertOne guarda el documento y devuelve el insertedId generado por Mongo
+            const result = await db
+                .collection<District>(COLLECTION_NAME)
+                .insertOne(data as District);
+
+            // Reutilizamos getDistrictById para traer el documento recién creado
+            // ya formateado con el id como string
+            const created = await DistrictRepository.getDistrictById(
+                result.insertedId.toString()
+            );
+
+            if (!created) {
+                throw new Error("No se pudo recuperar el distrito recién creado");
+            }
+
+            return created;
+        } catch (err) {
+            throw new Error(`Error al crear el distrito: ${err}`);
         }
     }
 }

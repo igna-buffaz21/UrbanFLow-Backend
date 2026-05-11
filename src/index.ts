@@ -33,6 +33,17 @@ app.get("/", async (req, res) => {
     }
 });
 
+// Middleware global de errores - SIEMPRE va después de todas las rutas
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const statusCode = err.statusCode || 500;
+    const message = err.message || "Error interno del servidor";
+
+    res.status(statusCode).json({
+        error: message,
+        statusCode: statusCode
+    });
+});
+
 
 async function startServer() {
     try {

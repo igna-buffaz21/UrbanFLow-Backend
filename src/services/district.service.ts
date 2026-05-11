@@ -1,5 +1,3 @@
-// src/services/district.service.ts
-
 import { ObjectId } from "mongodb";
 import { GeoJSONPolygon, GeoJSONMultiPolygon } from "../data/district.model";
 import { DistrictRepository } from "../repositorys/district.repository";
@@ -13,6 +11,20 @@ const VALID_POLYGON_TYPES = ["Polygon", "MultiPolygon"];
 interface GetDistrictByIdParams {
     id: string;
 }
+
+// POST /districts
+interface CreateDistrictParams {
+    name: string;
+    polygon: GeoJSONPolygon | GeoJSONMultiPolygon;
+}
+
+// PATCH /districts/:id
+// Partial<> hace que todos los campos sean opcionales
+interface UpdateDistrictParams {
+    name?: string;
+    polygon?: GeoJSONPolygon | GeoJSONMultiPolygon;
+}
+
 
 // --- Helper privado ---
 
@@ -65,4 +77,38 @@ export class DistrictService {
 
         return district;
     }
+
+
+    // POST /districts
+    static async createDistrict(params: CreateDistrictParams) {
+
+        // .trim() elimina espacios al inicio y al final del string
+        // Si después del trim queda vacío, el nombre no es válido
+        if (!params.name || params.name.trim() === "") {
+            throw buildError("El nombre     es requerido", 400);
+        }
+
+        // Validamos que el polygon tenga la estructura GeoJSON correcta
+        // Validamos que el polygon tenga la estructura GeoJSON correcta
+        if (!validatePolygon(params.polygon)) {
+            throw buildError(
+                "El polygon es requerido y debe ser un GeoJSON válido (Polygon o MultiPolygon)",
+                400
+            );
+        }
+        const existingDistrict = await DistrictRepository.getDistrictByName(params.name.trim());
+        if (existingDistrict) {
+            throw buildError("Ya existe un distrito con ese nombre", 409); // 409 Conflict
+        }
+
+        const now = new Date();
+
+        return await DistrictRepository.createDistrict({
+            name: params.name.trim(),
+            polygon: params.polygon,
+            createdAt: now,
+            updatedAt: now,
+        });
+    }
+
 }
