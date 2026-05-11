@@ -3,7 +3,7 @@ import { UserService } from "./user.service";
 import { User, UserRole, UserStatus } from "../data/user.model";
 
 const VALID_USER_ROLES: UserRole[] = ["superadmin", "admin", "operator", "citizen"];
-const VALID_USER_STATUSES: UserStatus[] = ["active", "inactive", "blocked"];
+const VALID_USER_STATUSES: UserStatus[] = ["pending", "active", "inactive", "blocked"];
 
 export class AuthService {
     static async getAuthenticatedUser(clerkId: string) {
@@ -16,7 +16,7 @@ export class AuthService {
         let user = await UserService.getUserByClerkId(clerkId);
 
         if (!user) {
-            user = await this.createCitizenUserFromClerk(clerkId);
+            user = await this.resolveFirstLoginUser(clerkId);
         }
 
         this.validateUserAccess(user);
@@ -24,7 +24,7 @@ export class AuthService {
         return this.mapAuthenticatedUserResponse(user);
     }
 
-    private static async createCitizenUserFromClerk(clerkId: string): Promise<User> {
+    private static async resolveFirstLoginUser(clerkId: string): Promise<User> {
         const clerkUser = await clerkClient.users.getUser(clerkId);
 
         const primaryEmail = clerkUser.emailAddresses.find(
@@ -37,19 +37,26 @@ export class AuthService {
             throw error;
         }
 
-        const createdUser = await UserService.createUser({
+        const email = primaryEmail.emailAddress.trim().toLowerCase();
+
+        const pendingUser = await UserService.getPendingUserByEmail(email);
+
+        if (pendingUser) {
+            return await UserService.activatePendingUser(pendingUser._id!, {
+                clerkId,
+                name: this.buildUserName(clerkUser.firstName, clerkUser.lastName),
+                photoUrl: clerkUser.imageUrl
+            });
+        }
+
+        return await UserService.createUserEntity({
             clerkId,
             name: this.buildUserName(clerkUser.firstName, clerkUser.lastName),
-            email: primaryEmail.emailAddress,
+            email,
             photoUrl: clerkUser.imageUrl,
             role: "citizen",
             status: "active"
         });
-
-        return {
-            ...createdUser,
-            _id: createdUser.id
-        } as unknown as User;
     }
 
     private static buildUserName(firstName: string | null, lastName: string | null): string {
@@ -67,6 +74,12 @@ export class AuthService {
 
         if (!VALID_USER_STATUSES.includes(user.status)) {
             const error = new Error("El usuario tiene un estado inválido");
+            (error as any).statusCode = 403;
+            throw error;
+        }
+
+        if (user.status === "pending") {
+            const error = new Error("El usuario todavía no fue activado");
             (error as any).statusCode = 403;
             throw error;
         }
