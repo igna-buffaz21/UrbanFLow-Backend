@@ -2,13 +2,14 @@ import express from "express";
 import "dotenv/config";
 import { connectMongo, mongoDb } from "./config/mongodb.config";
 import userRoutes from "./routers/user.router";
+import incidentRoutes from "./routers/incident.router";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-
+app.use("/api/incidents", incidentRoutes);
 app.use("/api/users", userRoutes)
 
 app.get("/", async (req, res) => {
