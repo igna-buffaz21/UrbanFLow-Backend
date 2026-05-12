@@ -4,6 +4,7 @@ import { clerkMiddleware } from "@clerk/express";
 
 import { connectMongo, mongoDb } from "./config/mongodb.config";
 import userRoutes from "./routers/user.router";
+import incidentRoutes from "./routers/incident.router";
 import authRouter from "./routers/auth.router";
 import { errorHandler } from "./middlewares/error.middleware";
 
@@ -12,6 +13,8 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
+app.use("/api/incidents", incidentRoutes);
+app.use("/api/users", userRoutes)
 app.use(clerkMiddleware());
 
 app.use("/api/auth", authRouter);
