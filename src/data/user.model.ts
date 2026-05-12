@@ -2,14 +2,15 @@ import { ObjectId } from "mongodb";
 
 export type UserRole = "superadmin" | "admin" | "operator" | "citizen";
 
-export type UserStatus = "active" | "inactive" | "blocked";
+export type UserStatus = "pending" | "active" | "inactive" | "blocked";
 
 export interface User {
     _id?: ObjectId;
 
-    clerkId: string;
+    clerkId?: string;
+    clerkInvitationId?: string;
+    name?: string;
 
-    name: string;
     email: string;
     photoUrl?: string;
 
