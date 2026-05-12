@@ -1,13 +1,34 @@
 import { Request, Response, NextFunction } from "express";
-import { UsuariosService } from "../services/user.service";
+import { UserService } from "../services/user.service";
+import { getAuth } from "@clerk/express";
 
 
-export class UsuariosController {
-    static async obtenerTodos(req: Request, res: Response, next: NextFunction) {
+export class UsersController {    
+    static async createUser(req: Request, res: Response, next: NextFunction) {
         try {
-            const usuarios = await UsuariosService.obtenerTodos();
-            res.json(usuarios);
-        } catch (err) {
+            const user = await UserService.createUser(req.body);
+
+            return res.status(201).json(user);
+        } 
+        catch (err) {
+            next(err);
+        }
+    }
+    static async inviteUser(req: Request, res: Response, next: NextFunction) {
+        try {
+            const auth = getAuth(req);
+
+            if (!auth.isAuthenticated || !auth.userId) {
+                return res.status(401).json({
+                    message: "Usuario no autenticado"
+                });
+            }
+
+            const invitedUser = await UserService.inviteUser(auth.userId, req.body);
+
+            return res.status(201).json(invitedUser);
+        } 
+        catch (err) {
             next(err);
         }
     }
