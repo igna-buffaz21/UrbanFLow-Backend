@@ -72,7 +72,7 @@ export class UserRepository {
     catch (err) {
         throw new Error("Error al obtener el usuario pendiente por email: " + err);
     }
-}
+    }
 
     static async activatePendingUser(
         userId: ObjectId,
