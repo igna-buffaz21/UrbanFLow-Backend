@@ -4,6 +4,8 @@ import { clerkMiddleware } from "@clerk/express";
 
 import { connectMongo, mongoDb } from "./config/mongodb.config";
 import userRoutes from "./routers/user.router";
+import districtRoutes from "./routers/district.router";
+import municipalityRoutes from "./routers/municipality.router";
 import incidentRoutes from "./routers/incident.router";
 import authRouter from "./routers/auth.router";
 import { errorHandler } from "./middlewares/error.middleware";
@@ -12,6 +14,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+app.use("/api/users", userRoutes);
+app.use("/api/districts", districtRoutes);
+app.use("/api/municipalities", municipalityRoutes);
+
+
 
 app.use("/api/incidents", incidentRoutes);
 app.use("/api/users", userRoutes)
@@ -38,6 +45,18 @@ app.get("/", async (req, res) => {
         });
     }
 });
+
+// Middleware global de errores - SIEMPRE va después de todas las rutas
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const statusCode = err.statusCode || 500;
+    const message = err.message || "Error interno del servidor";
+
+    res.status(statusCode).json({
+        error: message,
+        statusCode: statusCode
+    });
+});
+
 
 async function startServer() {
     try {
