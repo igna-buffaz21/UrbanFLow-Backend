@@ -1,62 +1,35 @@
+//Importacion de express y dotenv
 import express from "express";
 import "dotenv/config";
-import { clerkMiddleware } from "@clerk/express";
 
-import { connectMongo, mongoDb } from "./config/mongodb.config";
+//Importacion de middlewares
+import { clerkMiddleware } from "@clerk/express";
+import { errorHandler } from "./middlewares/error.middleware";
+
+//Importacion de servicios
+import { connectMongo } from "./config/mongodb.config";
+
+//Importacion de rutas
 import userRoutes from "./routers/user.router";
 import districtRoutes from "./routers/district.router";
 import municipalityRoutes from "./routers/municipality.router";
 import incidentRoutes from "./routers/incident.router";
+import healthRoutes from "./routers/health.router";
 import authRouter from "./routers/auth.router";
-import { errorHandler } from "./middlewares/error.middleware";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+app.use(clerkMiddleware());
+app.use(errorHandler);
+
 app.use("/api/users", userRoutes);
 app.use("/api/districts", districtRoutes);
 app.use("/api/municipalities", municipalityRoutes);
-
-
-
 app.use("/api/incidents", incidentRoutes);
-app.use("/api/users", userRoutes)
-app.use(clerkMiddleware());
-
 app.use("/api/auth", authRouter);
-app.use("/api/users", userRoutes);
-
-app.get("/", async (req, res) => {
-    try {
-        const db = mongoDb();
-        const mongoPing = await db.command({ ping: 1 });
-
-        res.json({
-            mensaje: "Servidor funcionando correctamente",
-            fecha_servidor: new Date(),
-            mongo_ping: mongoPing.ok
-        });
-    } 
-    catch (err) {
-        res.status(500).json({
-            error: "Error en el servidor: Error de conexiones",
-            detalle: err
-        });
-    }
-});
-
-// Middleware global de errores - SIEMPRE va después de todas las rutas
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const statusCode = err.statusCode || 500;
-    const message = err.message || "Error interno del servidor";
-
-    res.status(statusCode).json({
-        error: message,
-        statusCode: statusCode
-    });
-});
-
+app.use("/api/health", healthRoutes);
 
 async function startServer() {
     try {
@@ -71,7 +44,5 @@ async function startServer() {
         process.exit(1);
     }
 }
-
-app.use(errorHandler);
 
 startServer();

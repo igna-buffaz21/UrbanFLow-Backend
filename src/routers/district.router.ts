@@ -1,17 +1,11 @@
-// src/routers/district.router.ts
-
 import { Router } from "express";
 import { DistrictController } from "../controllers/district.controller";
+import { requireAuth } from "../middlewares/auth.middleware"; 
 
 const router = Router();
 
-// GET /districts
-router.get("/", DistrictController.getDistricts);
-
-// GET /districts/:id
-router.get("/:id", DistrictController.getDistrictById);
-
-// POST /districts
-router.post("/", DistrictController.createDistrict);
+router.get("/", requireAuth, DistrictController.getDistricts);
+router.get("/:id", requireAuth, DistrictController.getDistrictById);
+router.post("/", requireAuth, DistrictController.createDistrict);
 
 export default router;

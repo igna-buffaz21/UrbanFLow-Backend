@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { MunicipalityController } from "../controllers/municipality.controller";
+import { requireAuth } from "../middlewares/auth.middleware"; 
 
 const router = Router();
 
-router.get("/", MunicipalityController.getMunicipalities);
-router.get("/:id", MunicipalityController.getMunicipalityById);
-router.post("/", MunicipalityController.createMunicipality);
+router.get("/", requireAuth, MunicipalityController.getMunicipalities);
+router.get("/:id", requireAuth, MunicipalityController.getMunicipalityById);
+router.post("/", requireAuth, MunicipalityController.createMunicipality);
 
 export default router;
