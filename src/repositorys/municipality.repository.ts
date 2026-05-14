@@ -152,4 +152,27 @@ export class MunicipalityRepository {
             throw new Error(`Error al crear la municipalidad: ${err}`);
         }
     }
+
+    static async updateMunicipality(
+        id: string,
+        data: Partial<Pick<Municipality, "name" | "districtId" | "status">>
+    ): Promise<MunicipalityResponse | null> {
+        try {
+            const db = mongoDb();
+
+            const result = await db
+                .collection<Municipality>(COLLECTION_NAME)
+                .findOneAndUpdate(
+                    { _id: new ObjectId(id) },
+                    { $set: { ...data, updatedAt: new Date() } },
+                    { returnDocument: "after" }
+                );
+
+            if (!result) return null;
+
+            return await MunicipalityRepository.getMunicipalityById(id);
+        } catch (err) {
+            throw new Error(`Error al actualizar la municipalidad: ${err}`);
+        }
+    }
 }

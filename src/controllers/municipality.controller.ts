@@ -45,4 +45,21 @@ export class MunicipalityController {
             next(err);
         }
     }
+
+    static async updateMunicipality(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { id } = req.params;
+            const { name, districtId, status } = req.body;
+
+            const municipality = await MunicipalityService.updateMunicipality(id, {
+                name,
+                districtId,
+                status,
+            });
+
+            res.status(200).json(municipality);
+        } catch (err) {
+            next(err);
+        }
+    }
 }

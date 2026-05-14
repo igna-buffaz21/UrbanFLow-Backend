@@ -15,6 +15,12 @@ interface CreateMunicipalityParams {
     status?: MunicipalityStatus;
 }
 
+interface UpdateMunicipalityParams {
+    name?: string;
+    districtId?: string;
+    status?: MunicipalityStatus;
+}
+
 function buildError(message: string, statusCode: number): Error {
     return Object.assign(new Error(message), { statusCode });
 }
@@ -79,5 +85,46 @@ export class MunicipalityService {
             createdAt: now,
             updatedAt: now,
         });
+    }
+    
+    static async updateMunicipality(id: string, params: UpdateMunicipalityParams) {
+
+        if (!ObjectId.isValid(id)) {
+            throw buildError("El id no es un ObjectId válido", 400);
+        }
+
+        if (Object.keys(params).length === 0) {
+            throw buildError("Debe enviar al menos un campo para actualizar", 400);
+        }
+
+        if (params.name !== undefined && params.name.trim() === "") {
+            throw buildError("El nombre no puede estar vacío", 400);
+        }
+
+        if (params.districtId !== undefined && !ObjectId.isValid(params.districtId)) {
+            throw buildError("El districtId no es un ObjectId válido", 400);
+        }
+
+        if (params.status !== undefined && !VALID_STATUSES.includes(params.status)) {
+            throw buildError("El status debe ser 'active' o 'inactive'", 400);
+        }
+
+        const updateData: {
+            name?: string;
+            districtId?: ObjectId;
+            status?: MunicipalityStatus;
+        } = {};
+
+        if (params.name) updateData.name = params.name.trim();
+        if (params.districtId) updateData.districtId = new ObjectId(params.districtId);
+        if (params.status) updateData.status = params.status;
+
+        const updated = await MunicipalityRepository.updateMunicipality(id, updateData);
+
+        if (!updated) {
+            throw buildError("Municipalidad no encontrada", 404);
+        }
+
+        return updated;
     }
 }
