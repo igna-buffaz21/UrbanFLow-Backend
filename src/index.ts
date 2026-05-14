@@ -16,13 +16,13 @@ import municipalityRoutes from "./routers/municipality.router";
 import incidentRoutes from "./routers/incident.router";
 import healthRoutes from "./routers/health.router";
 import authRouter from "./routers/auth.router";
+import categoryRoutes from "./routers/category.router";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(clerkMiddleware());
-app.use(errorHandler);
 
 app.use("/api/users", userRoutes);
 app.use("/api/districts", districtRoutes);
@@ -30,8 +30,12 @@ app.use("/api/municipalities", municipalityRoutes);
 app.use("/api/incidents", incidentRoutes);
 app.use("/api/auth", authRouter);
 app.use("/api/health", healthRoutes);
+app.use("/api/categories", categoryRoutes);
 
-async function startServer() {
+app.use(errorHandler);
+
+
+async function startServer() { 
     try {
         await connectMongo();
 
