@@ -54,13 +54,11 @@ export class UserRepository {
         }
     }
 
-    static async getUserById(userId: ObjectId): Promise<User | null> {
+    static async getUserById(id: ObjectId): Promise<User | null> {
         try {
             const db = mongoDb();
 
-            return await db.collection<User>(USERS_COLLECTION).findOne({
-                _id: userId
-            });
+            return await db.collection<User>(USERS_COLLECTION).findOne({ _id: id });
         } 
         catch (err) {
             throw new Error("Error al obtener el usuario por ID: " + err);
@@ -182,4 +180,29 @@ export class UserRepository {
             throw new Error("Error al obtener los usuarios: " + err);
         }
     }
+
+    static async updateUserStatus(id: ObjectId, status: UserStatus): Promise<User | null> {
+        try {
+            const db = mongoDb();
+
+            const updatedUser = await db.collection<User>(USERS_COLLECTION).findOneAndUpdate(
+                { _id: id },
+                {
+                    $set: {
+                        status,
+                        updatedAt: new Date()
+                    }
+                },
+                {
+                    returnDocument: "after"
+                }
+            );
+
+            return updatedUser;
+        } 
+        catch (err) {
+            throw new Error("Error al actualizar el estado del usuario: " + err);
+        }
+    }
+
 }
