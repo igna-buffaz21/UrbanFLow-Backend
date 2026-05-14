@@ -14,6 +14,7 @@ export class UsersController {
             next(err);
         }
     }
+
     static async inviteUser(req: Request, res: Response, next: NextFunction) {
         try {
             const auth = getAuth(req);
@@ -27,6 +28,27 @@ export class UsersController {
             const invitedUser = await UserService.inviteUser(auth.userId, req.body);
 
             return res.status(201).json(invitedUser);
+        } 
+        catch (err) {
+            next(err);
+        }
+    }
+
+    static async getUsers(req: Request, res: Response, next: NextFunction) {
+        try {
+            
+            const { userId } = getAuth(req);
+
+            
+            if (!userId) {
+                return res.status(401).json({
+                    message: "Usuario no autenticado"
+                });
+            } 
+
+            const users = await UserService.getUsers(userId, req.query);
+
+            return res.json(users);
         } 
         catch (err) {
             next(err);

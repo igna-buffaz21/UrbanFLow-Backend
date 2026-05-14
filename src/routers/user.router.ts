@@ -6,5 +6,6 @@ const router = Router()
 
 router.post("/", requireAuth, UsersController.createUser);
 router.post("/invite", requireAuth,UsersController.inviteUser);
+router.get("/", UsersController.getUsers);
 
 export default router;

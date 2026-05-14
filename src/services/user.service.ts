@@ -23,6 +23,12 @@ interface InviteUserDto {
     municipalityId?: string;
 }
 
+interface GetUsersQuery {
+    role?: unknown;
+    status?: unknown;
+    municipalityId?: unknown;
+}
+
 export class UserService {
     static async createUser(data: CreateUserDto) {
         this.validateCreateUserData(data);
@@ -201,6 +207,82 @@ export class UserService {
         }
 
         return updatedUser;
+    }
+
+        static async getUsers(clerkId: string, query: GetUsersQuery) {
+        const authenticatedUser = await UserRepository.getUserByClerkId(clerkId);
+
+        if (!authenticatedUser) {
+            const error = new Error("Usuario autenticado no encontrado en la base de datos");
+            (error as any).statusCode = 404;
+            throw error;
+        }
+
+        if (authenticatedUser.status !== "active") {
+            const error = new Error("Usuario inactivo o bloqueado");
+            (error as any).statusCode = 403;
+            throw error;
+        }
+
+        if (authenticatedUser.role !== "superadmin" && authenticatedUser.role !== "admin") {
+            const error = new Error("No tenés permisos para listar usuarios");
+            (error as any).statusCode = 403;
+            throw error;
+        }
+
+        const filters: {
+            role?: UserRole;
+            status?: UserStatus;
+            municipalityId?: ObjectId;
+        } = {};
+
+        if (query.role) {
+            if (typeof query.role !== "string" || !VALID_USER_ROLES.includes(query.role as UserRole)) {
+                const error = new Error("Rol inválido");
+                (error as any).statusCode = 400;
+                throw error;
+            }
+
+            filters.role = query.role as UserRole;
+        }
+
+        if (query.status) {
+            if (typeof query.status !== "string" || !VALID_USER_STATUSES.includes(query.status as UserStatus)) {
+                const error = new Error("Estado inválido");
+                (error as any).statusCode = 400;
+                throw error;
+            }
+
+            filters.status = query.status as UserStatus;
+        }
+
+        if (authenticatedUser.role === "admin") {
+            if (!authenticatedUser.municipalityId) {
+                const error = new Error("El administrador no tiene municipio asignado");
+                (error as any).statusCode = 400;
+                throw error;
+            }
+
+            if (query.municipalityId && query.municipalityId !== authenticatedUser.municipalityId.toString()) {
+                const error = new Error("No podés listar usuarios de otro municipio");
+                (error as any).statusCode = 403;
+                throw error;
+            }
+
+            filters.municipalityId = authenticatedUser.municipalityId;
+        }
+
+        if (authenticatedUser.role === "superadmin" && query.municipalityId) {
+            if (typeof query.municipalityId !== "string" || !ObjectId.isValid(query.municipalityId)) {
+                const error = new Error("municipalityId inválido");
+                (error as any).statusCode = 400;
+                throw error;
+            }
+
+            filters.municipalityId = new ObjectId(query.municipalityId);
+        }
+
+        return await UserRepository.getUsers(filters);
     }
 
     private static validateInviteUserData(data: InviteUserDto) {
