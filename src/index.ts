@@ -22,7 +22,6 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(clerkMiddleware());
-app.use(errorHandler);
 
 app.use("/api/users", userRoutes);
 app.use("/api/districts", districtRoutes);
@@ -31,6 +30,7 @@ app.use("/api/incidents", incidentRoutes);
 app.use("/api/auth", authRouter);
 app.use("/api/health", healthRoutes);
 
+app.use(errorHandler);
 async function startServer() {
     try {
         await connectMongo();
