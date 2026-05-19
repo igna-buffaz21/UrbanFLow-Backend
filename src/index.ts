@@ -35,8 +35,7 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/incident-comments", incidentCommentRoutes);
 app.use(errorHandler);
 
-
-async function startServer() { 
+async function startServer() {
     try {
         await connectMongo();
 
