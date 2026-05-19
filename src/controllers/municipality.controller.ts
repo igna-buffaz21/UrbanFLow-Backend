@@ -3,7 +3,6 @@ import { MunicipalityService } from "../services/municipality.service";
 
 export class MunicipalityController {
 
-    // GET /municipalities
     static async getMunicipalities(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const { status, districtId } = req.query;
@@ -19,7 +18,6 @@ export class MunicipalityController {
         }
     }
 
-    // GET /municipalities/:id
     static async getMunicipalityById(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const { id } = req.params;
@@ -32,7 +30,6 @@ export class MunicipalityController {
         }
     }
 
-    // POST /municipalities
     static async createMunicipality(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const { name, districtId, status } = req.body;
@@ -44,6 +41,23 @@ export class MunicipalityController {
             });
 
             res.status(201).json(municipality);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    static async updateMunicipality(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { id } = req.params;
+            const { name, districtId, status } = req.body;
+
+            const municipality = await MunicipalityService.updateMunicipality(id, {
+                name,
+                districtId,
+                status,
+            });
+
+            res.status(200).json(municipality);
         } catch (err) {
             next(err);
         }
