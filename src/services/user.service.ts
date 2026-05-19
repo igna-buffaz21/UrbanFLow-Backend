@@ -100,7 +100,7 @@ export class UserService {
         }
 
         if (authenticatedUser.status !== "active") {
-            const error = new Error("El usuario autenticado no está activo");
+            const error = new Error("El usuario no está activo");
             (error as any).statusCode = 403;
             throw error;
         }
