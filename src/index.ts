@@ -32,6 +32,8 @@ app.use("/api/health", healthRoutes);
 
 app.use(errorHandler);
 
+app.use(errorHandler);
+
 async function startServer() {
     try {
         await connectMongo();
