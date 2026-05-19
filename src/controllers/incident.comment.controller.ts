@@ -37,4 +37,32 @@ export class IncidentCommentController {
         }
     }
 
+    static async updateComment(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { id } = req.params;
+            const { comment, photoUrl, requesterId } = req.body;
+
+            const updated = await IncidentCommentService.updateComment(id, requesterId, {
+                comment,
+                photoUrl,
+            });
+
+            res.status(200).json(updated);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    static async updateCommentStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { id } = req.params;
+            const { status, requesterId } = req.body;
+
+            const updated = await IncidentCommentService.updateCommentStatus(id, requesterId, status);
+
+            res.status(200).json(updated);
+        } catch (err) {
+            next(err);
+        }
+    }
 }

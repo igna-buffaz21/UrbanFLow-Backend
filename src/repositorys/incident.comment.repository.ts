@@ -108,10 +108,51 @@ export class IncidentCommentRepository {
             if (!created) {
                 throw new Error("No se pudo recuperar el comentario recién creado");
             }
-
             return created;
         } catch (err) {
             throw new Error(`Error al crear el comentario: ${err}`);
+        }
+    }
+
+    static async updateComment(
+        id: string,
+        data: Partial<Pick<IncidentComment, "comment" | "photoUrl">>
+    ): Promise<IncidentComment | null> {
+        try {
+            const db = mongoDb();
+
+            const result = await db
+                .collection<IncidentComment>(COLLECTION_NAME)
+                .findOneAndUpdate(
+                    { _id: new ObjectId(id) },
+                    { $set: { ...data, updatedAt: new Date() } },
+                    { returnDocument: "after" }
+                );
+
+            return result ?? null;
+        } catch (err) {
+            throw new Error(`Error al actualizar el comentario: ${err}`);
+        }
+    }
+
+    static async updateCommentStatus(
+        id: string,
+        status: IncidentCommentStatus
+    ): Promise<IncidentComment | null> {
+        try {
+            const db = mongoDb();
+
+            const result = await db
+                .collection<IncidentComment>(COLLECTION_NAME)
+                .findOneAndUpdate(
+                    { _id: new ObjectId(id) },
+                    { $set: { status, updatedAt: new Date() } },
+                    { returnDocument: "after" }
+                );
+
+            return result ?? null;
+        } catch (err) {
+            throw new Error(`Error al actualizar el estado del comentario: ${err}`);
         }
     }
 

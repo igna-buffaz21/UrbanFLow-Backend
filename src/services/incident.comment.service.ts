@@ -67,4 +67,71 @@ export class IncidentCommentService {
             updatedAt: now,
         });
     }
+
+    static async updateComment(id: string, requesterId: string, params: UpdateCommentParams) {
+        if (!ObjectId.isValid(id)) {
+            throw buildError("El id no es un ObjectId válido", 400);
+        }
+
+        if (Object.keys(params).length === 0) {
+            throw buildError("Debe enviar al menos un campo para actualizar", 400);
+        }
+
+        if (params.comment !== undefined && params.comment.trim() === "") {
+            throw buildError("El comentario no puede estar vacío", 400);
+        }
+
+        const existing = await IncidentCommentRepository.getCommentById(id);
+
+        if (!existing) {
+            throw buildError("Comentario no encontrado", 404);
+        }
+
+        if (existing.createdBy.toString() !== requesterId) {
+            throw buildError("No tenés permiso para editar este comentario", 403);
+        }
+
+        const updateData: { comment?: string; photoUrl?: string } = {};
+        if (params.comment) updateData.comment = params.comment.trim();
+        if (params.photoUrl !== undefined) updateData.photoUrl = params.photoUrl;
+
+        const updated = await IncidentCommentRepository.updateComment(id, updateData);
+
+        if (!updated) {
+            throw buildError("No se pudo actualizar el comentario", 500);
+        }
+
+        return updated;
+    }
+
+    static async updateCommentStatus(id: string, requesterId: string, status: string) {
+        if (!ObjectId.isValid(id)) {
+            throw buildError("El id no es un ObjectId válido", 400);
+        }
+
+        if (!status || !VALID_STATUSES.includes(status as IncidentCommentStatus)) {
+            throw buildError("El status debe ser 'visible', 'hidden' o 'deleted'", 400);
+        }
+
+        const existing = await IncidentCommentRepository.getCommentById(id);
+
+        if (!existing) {
+            throw buildError("Comentario no encontrado", 404);
+        }
+
+        if (existing.createdBy.toString() !== requesterId) {
+            throw buildError("No tenés permiso para modificar el estado de este comentario", 403);
+        }
+
+        const updated = await IncidentCommentRepository.updateCommentStatus(
+            id,
+            status as IncidentCommentStatus
+        );
+
+        if (!updated) {
+            throw buildError("No se pudo actualizar el estado del comentario", 500);
+        }
+
+        return updated;
+    }
 }
