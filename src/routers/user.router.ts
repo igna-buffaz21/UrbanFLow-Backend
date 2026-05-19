@@ -6,5 +6,9 @@ const router = Router()
 
 router.post("/", requireAuth, UsersController.createUser);
 router.post("/invite", requireAuth,UsersController.inviteUser);
+router.get("/", requireAuth, UsersController.getUsers);
+router.get("/:id/status", requireAuth,UsersController.getUserStatus);
+router.patch("/:id/status", requireAuth, UsersController.updateUserStatus);
+router.get("/:id", requireAuth, UsersController.getUserById);
 
 export default router;

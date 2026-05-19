@@ -4,7 +4,8 @@ import { requireAuth } from "../middlewares/auth.middleware";
 
 const router = Router();
 
-router.get("/", requireAuth, DistrictController.getDistricts);
+router.get("/", DistrictController.getDistricts);
+//router.get("/", requireAuth, DistrictController.getDistricts);
 router.get("/:id", requireAuth, DistrictController.getDistrictById);
 router.post("/", requireAuth, DistrictController.createDistrict);
 

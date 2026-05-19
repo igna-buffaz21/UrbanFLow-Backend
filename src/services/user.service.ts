@@ -2,10 +2,12 @@ import { ObjectId } from "mongodb";
 import { UserRepository } from "../repositorys/user.repository";
 import { User, UserRole, UserStatus } from "../data/user.model";
 import { ClerkRepository } from "../repositorys/clerk.repository";
+import { MunicipalityRepository } from "../repositorys/municipality.repository";
 
 const VALID_USER_ROLES: UserRole[] = ["superadmin", "admin", "operator", "citizen"];
 const VALID_USER_STATUSES: UserStatus[] = ["pending", "active", "inactive", "blocked"];
 const INVITABLE_ROLES: UserRole[] = ["admin", "operator"];
+const VALID_STATUS_TO_UPDATE = ["active", "inactive"];
 
 interface CreateUserDto {
     clerkId: string;
@@ -21,6 +23,28 @@ interface InviteUserDto {
     email: string;
     role: UserRole;
     municipalityId?: string;
+}
+
+interface GetUsersQuery {
+    role?: unknown;
+    status?: unknown;
+    municipalityId?: unknown;
+}
+
+interface GetUserStatusParams {
+    authenticatedClerkId: string | null;
+    userId: string;
+}
+
+interface UpdateUserStatusParams {
+    authenticatedClerkId: string | null;
+    userId: string;
+    status: UserStatus;
+}
+
+interface GetUserByIdParams {
+    authenticatedClerkId: string;
+    userId: string;
 }
 
 export class UserService {
@@ -76,7 +100,7 @@ export class UserService {
         }
 
         if (authenticatedUser.status !== "active") {
-            const error = new Error("El usuario autenticado no está activo");
+            const error = new Error("El usuario no está activo");
             (error as any).statusCode = 403;
             throw error;
         }
@@ -201,6 +225,401 @@ export class UserService {
         }
 
         return updatedUser;
+    }
+
+    static async getUsers(clerkId: string, query: GetUsersQuery) {
+        const authenticatedUser = await UserRepository.getUserByClerkId(clerkId);
+
+        if (!authenticatedUser) {
+            const error = new Error("Usuario autenticado no encontrado en la base de datos");
+            (error as any).statusCode = 404;
+            throw error;
+        }
+
+        if (authenticatedUser.status !== "active") {
+            const error = new Error("Usuario inactivo o bloqueado");
+            (error as any).statusCode = 403;
+            throw error;
+        }
+
+        if (authenticatedUser.role !== "superadmin" && authenticatedUser.role !== "admin") {
+            const error = new Error("No tenés permisos para listar usuarios");
+            (error as any).statusCode = 403;
+            throw error;
+        }
+
+        const filters: {
+            role?: UserRole;
+            status?: UserStatus;
+            municipalityId?: ObjectId;
+        } = {};
+
+        if (query.role) {
+            if (typeof query.role !== "string" || !VALID_USER_ROLES.includes(query.role as UserRole)) {
+                const error = new Error("Rol inválido");
+                (error as any).statusCode = 400;
+                throw error;
+            }
+
+            filters.role = query.role as UserRole;
+        }
+
+        if (query.status) {
+            if (typeof query.status !== "string" || !VALID_USER_STATUSES.includes(query.status as UserStatus)) {
+                const error = new Error("Estado inválido");
+                (error as any).statusCode = 400;
+                throw error;
+            }
+
+            filters.status = query.status as UserStatus;
+        }
+
+        if (authenticatedUser.role === "admin") {
+            if (!authenticatedUser.municipalityId) {
+                const error = new Error("El administrador no tiene municipio asignado");
+                (error as any).statusCode = 400;
+                throw error;
+            }
+
+            if (query.municipalityId && query.municipalityId !== authenticatedUser.municipalityId.toString()) {
+                const error = new Error("No podés listar usuarios de otro municipio");
+                (error as any).statusCode = 403;
+                throw error;
+            }
+
+            filters.municipalityId = authenticatedUser.municipalityId;
+        }
+
+        if (authenticatedUser.role === "superadmin" && query.municipalityId) {
+            if (typeof query.municipalityId !== "string" || !ObjectId.isValid(query.municipalityId)) {
+                const error = new Error("municipalityId inválido");
+                (error as any).statusCode = 400;
+                throw error;
+            }
+
+            filters.municipalityId = new ObjectId(query.municipalityId);
+        }
+
+        return await UserRepository.getUsers(filters);
+    }
+
+    static async getUserStatus(params: GetUserStatusParams) {
+        const { authenticatedClerkId, userId } = params;
+
+        if (!authenticatedClerkId) {
+            const error = new Error("Usuario no autenticado");
+            (error as any).statusCode = 401;
+            throw error;
+        }
+
+        if (!ObjectId.isValid(userId)) {
+            const error = new Error("ID de usuario inválido");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        const authenticatedUser = await UserRepository.getUserByClerkId(authenticatedClerkId);
+
+        if (!authenticatedUser) {
+            const error = new Error("Usuario autenticado no encontrado en la base de datos");
+            (error as any).statusCode = 404;
+            throw error;
+        }
+
+        const allowedRoles = ["superadmin", "admin"];
+
+        if (!allowedRoles.includes(authenticatedUser.role)) {
+            const error = new Error("No tenés permisos para consultar el estado de usuarios");
+            (error as any).statusCode = 403;
+            throw error;
+        }
+
+        if (authenticatedUser.status !== "active") {
+            const error = new Error("Tu usuario no está activo");
+            (error as any).statusCode = 403;
+            throw error;
+        }
+
+        const userObjectId = new ObjectId(userId);
+
+        const user = await UserRepository.getUserById(userObjectId);
+
+        if (!user) {
+            const error = new Error("Usuario no encontrado");
+            (error as any).statusCode = 404;
+            throw error;
+        }
+
+        if (authenticatedUser.role === "admin") {
+            if (!authenticatedUser.municipalityId || !user.municipalityId) {
+                const error = new Error("No tenés permisos para consultar este usuario");
+                (error as any).statusCode = 403;
+                throw error;
+            }
+
+            const sameMunicipality = authenticatedUser.municipalityId.equals(user.municipalityId);
+
+            if (!sameMunicipality) {
+                const error = new Error("No podés consultar usuarios de otro municipio");
+                (error as any).statusCode = 403;
+                throw error;
+            }
+        }
+
+        return {
+            status: user.status
+        };
+    }
+
+    static async updateUserStatus(params: UpdateUserStatusParams) {
+        const { authenticatedClerkId, userId, status } = params;
+
+        if (!authenticatedClerkId) {
+            const error = new Error("Usuario no autenticado");
+            (error as any).statusCode = 401;
+            throw error;
+        }
+
+        if (!ObjectId.isValid(userId)) {
+            const error = new Error("ID de usuario inválido");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        if (!status) {
+            const error = new Error("El estado es obligatorio");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        if (!VALID_STATUS_TO_UPDATE.includes(status)) {
+            const error = new Error("Estado inválido. Solo se permite active o inactive");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        const authenticatedUser = await UserRepository.getUserByClerkId(authenticatedClerkId);
+
+        if (!authenticatedUser) {
+            const error = new Error("Usuario autenticado no encontrado en la base de datos");
+            (error as any).statusCode = 404;
+            throw error;
+        }
+
+        if (authenticatedUser.status !== "active") {
+            const error = new Error("Tu usuario no está activo");
+            (error as any).statusCode = 403;
+            throw error;
+        }
+
+        const allowedRoles = ["superadmin", "admin"];
+
+        if (!allowedRoles.includes(authenticatedUser.role)) {
+            const error = new Error("No tenés permisos para actualizar estados de usuarios");
+            (error as any).statusCode = 403;
+            throw error;
+        }
+
+        const userObjectId = new ObjectId(userId);
+
+        const userToUpdate = await UserRepository.getUserById(userObjectId);
+
+        if (!userToUpdate) {
+            const error = new Error("Usuario no encontrado");
+            (error as any).statusCode = 404;
+            throw error;
+        }
+
+        if (authenticatedUser._id?.equals(userToUpdate._id!)) {
+            const error = new Error("No podés modificar tu propio estado");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        if (authenticatedUser.role === "superadmin") {
+            if (userToUpdate.role !== "admin") {
+                const error = new Error("El superadmin solo puede cambiar el estado de administradores");
+                (error as any).statusCode = 403;
+                throw error;
+            }
+        }
+
+        if (authenticatedUser.role === "admin") {
+            if (userToUpdate.role !== "operator") {
+                const error = new Error("El admin solo puede cambiar el estado de operarios");
+                (error as any).statusCode = 403;
+                throw error;
+            }
+
+            if (!authenticatedUser.municipalityId || !userToUpdate.municipalityId) {
+                const error = new Error("No tenés permisos para modificar este usuario");
+                (error as any).statusCode = 403;
+                throw error;
+            }
+
+            const sameMunicipality = authenticatedUser.municipalityId.equals(userToUpdate.municipalityId);
+
+            if (!sameMunicipality) {
+                const error = new Error("No podés modificar usuarios de otro municipio");
+                (error as any).statusCode = 403;
+                throw error;
+            }
+        }
+
+        const updatedUser = await UserRepository.updateUserStatus(userObjectId, status);
+
+        if (!updatedUser) {
+            const error = new Error("No se pudo actualizar el estado del usuario");
+            (error as any).statusCode = 500;
+            throw error;
+        }
+
+        return {
+            message: "Estado actualizado correctamente",
+            user: {
+                id: updatedUser._id,
+                status: updatedUser.status
+            }
+        };
+    }
+
+    static async getUserById(params: GetUserByIdParams) {
+        const { authenticatedClerkId, userId } = params;
+
+        if (!ObjectId.isValid(userId)) {
+            const error = new Error("ID de usuario inválido");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        const authenticatedUser = await UserRepository.getUserByClerkId(authenticatedClerkId);
+
+        if (!authenticatedUser) {
+            const error = new Error("Usuario autenticado no encontrado en la base de datos");
+            (error as any).statusCode = 404;
+            throw error;
+        }
+
+        if (authenticatedUser.status !== "active") {
+            const error = new Error("Tu usuario no está activo");
+            (error as any).statusCode = 403;
+            throw error;
+        }
+
+        const userObjectId = new ObjectId(userId);
+
+        const user = await UserRepository.getUserById(userObjectId);
+
+        if (!user) {
+            const error = new Error("Usuario no encontrado");
+            (error as any).statusCode = 404;
+            throw error;
+        }
+
+        if (authenticatedUser.role === "superadmin") {
+            return await this.getUserDetailForSuperadmin(user);
+        }
+
+        if (authenticatedUser.role === "admin") {
+            return await this.getUserDetailForAdmin(authenticatedUser, user);
+        }
+
+        if (authenticatedUser.role === "citizen") {
+            return this.getPublicUserDetail(user);
+        }
+
+        const error = new Error("No tenés permisos para consultar este usuario");
+        (error as any).statusCode = 403;
+        throw error;
+    }
+
+    private static async getUserDetailForSuperadmin(user: User) {
+        if (user.role !== "admin") {
+            const error = new Error("El superadmin solo puede consultar el detalle completo de administradores");
+            (error as any).statusCode = 403;
+            throw error;
+        }
+
+        const municipality = await this.getUserMunicipality(user);
+
+        return {
+            id: user._id?.toString(),
+            name: user.name || null,
+            email: user.email,
+            role: user.role,
+            status: user.status,
+            municipality,
+            photoUrl: user.photoUrl || null,
+            createdAt: user.createdAt
+        };
+    }
+
+    private static async getUserDetailForAdmin(authenticatedUser: User, user: User) {
+        if (user.role !== "admin" && user.role !== "operator") {
+            const error = new Error("El admin solo puede consultar admins u operarios");
+            (error as any).statusCode = 403;
+            throw error;
+        }
+
+        if (!authenticatedUser.municipalityId || !user.municipalityId) {
+            const error = new Error("No tenés permisos para consultar este usuario");
+            (error as any).statusCode = 403;
+            throw error;
+        }
+
+        const sameMunicipality = authenticatedUser.municipalityId.equals(user.municipalityId);
+
+        if (!sameMunicipality) {
+            const error = new Error("No podés consultar usuarios de otro municipio");
+            (error as any).statusCode = 403;
+            throw error;
+        }
+
+        const municipality = await this.getUserMunicipality(user);
+
+        return {
+            id: user._id?.toString(),
+            name: user.name || null,
+            email: user.email,
+            role: user.role,
+            status: user.status,
+            municipality,
+            photoUrl: user.photoUrl || null,
+            createdAt: user.createdAt
+        };
+    }
+
+    private static getPublicUserDetail(user: User) {
+        if (user.status !== "active") {
+            const error = new Error("Usuario no disponible");
+            (error as any).statusCode = 404;
+            throw error;
+        }
+
+        return {
+            id: user._id?.toString(),
+            name: user.name || null,
+            photoUrl: user.photoUrl || null,
+            role: user.role,
+            createdAt: user.createdAt
+        };
+    }
+
+    private static async getUserMunicipality(user: User) {
+        if (!user.municipalityId) {
+            return null;
+        }
+
+        const municipality = await MunicipalityRepository.getMunicipalityById(user.municipalityId.toString());
+
+        if (!municipality) {
+            return null;
+        }
+
+        return {
+            id: municipality.id?.toString(),
+            name: municipality.name
+        };
     }
 
     private static validateInviteUserData(data: InviteUserDto) {
@@ -352,4 +771,6 @@ export class UserService {
             municipalityId: user.municipalityId?.toString()
         };
     }
+
+
 }

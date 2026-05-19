@@ -1,10 +1,12 @@
-//Importacion de express y dotenv
+//Importacion configuracion basica
 import express from "express";
 import "dotenv/config";
+import cors from "cors";
 
 //Importacion de middlewares
 import { clerkMiddleware } from "@clerk/express";
 import { errorHandler } from "./middlewares/error.middleware";
+import { requestLogger } from "./middlewares/logger.middleware";
 
 //Importacion de servicios
 import { connectMongo } from "./config/mongodb.config";
@@ -20,8 +22,17 @@ import authRouter from "./routers/auth.router";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
 app.use(express.json());
 app.use(clerkMiddleware());
+app.use(requestLogger);
 
 app.use("/api/users", userRoutes);
 app.use("/api/districts", districtRoutes);
@@ -31,6 +42,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/health", healthRoutes);
 
 app.use(errorHandler);
+
 async function startServer() {
     try {
         await connectMongo();
