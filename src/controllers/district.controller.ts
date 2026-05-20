@@ -35,4 +35,16 @@ export class DistrictController {
             next(err);
         }
     }
+
+    static async findDistrictByLocation(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const lng = parseFloat(req.query.lng as string);
+            const lat = parseFloat(req.query.lat as string);
+
+            const district = await DistrictService.findDistrictByPoint({ lng, lat });
+            res.status(200).json(district);
+        } catch (err) {
+            next(err);
+        }
+    }
 }

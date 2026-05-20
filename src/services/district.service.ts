@@ -14,6 +14,11 @@ interface CreateDistrictParams {
     polygon: GeoJSONPolygon | GeoJSONMultiPolygon;
 }
 
+interface FindDistrictByPointParams {
+    lng: number;
+    lat: number;
+}
+
 function buildError(message: string, statusCode: number): Error {
     return Object.assign(new Error(message), { statusCode });
 }
@@ -88,5 +93,28 @@ export class DistrictService {
             createdAt: now,
             updatedAt: now,
         });
+    }
+
+    static async findDistrictByPoint(params: FindDistrictByPointParams) {
+        const { lng, lat } = params;
+
+        // Validaciones básicas
+        if (lng === undefined || lat === undefined) {
+            throw buildError("Longitud y latitud son requeridas", 400);
+        }
+        if (typeof lng !== "number" || typeof lat !== "number") {
+            throw buildError("Longitud y latitud deben ser números", 400);
+        }
+        if (lng < -180 || lng > 180 || lat < -90 || lat > 90) {
+            throw buildError("Coordenadas fuera de rango", 400);
+        }
+
+        const district = await DistrictRepository.findDistrictByPoint(lng, lat);
+
+        if (!district) {
+            throw buildError("No se encontró ningún distrito en esa ubicación", 404);
+        }
+
+        return district;
     }
 }
