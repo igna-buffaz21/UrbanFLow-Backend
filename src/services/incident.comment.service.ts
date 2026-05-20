@@ -6,12 +6,15 @@ const VALID_STATUSES: IncidentCommentStatus[] = ["visible", "hidden", "deleted"]
 
 interface GetCommentsParams {
     incidentId: string;
+    requesterId: string;
+    requesterRole: string;
     status?: string;
 }
 
 interface CreateCommentParams {
     incidentId: string;
-    createdBy: string;
+    requesterId: string;
+    requesterRole: string;
     comment: string;
     photoUrl?: string;
 }
@@ -36,6 +39,21 @@ export class IncidentCommentService {
             throw buildError("El status debe ser 'visible', 'hidden' o 'deleted'", 400);
         }
 
+        const incident = await IncidentCommentRepository.getIncidentById(params.incidentId);
+
+        if (!incident) {
+            throw buildError("Incidente no encontrado", 404);
+        }
+
+        if (params.requesterRole === "citizen") {
+            const isOwner = incident.createdBy.toString() === params.requesterId;
+            const isPublic = ["open", "assigned", "resolved"].includes(incident.status);
+
+            if (!isOwner && !isPublic) {
+                throw buildError("No tenés permiso para ver los comentarios de este incidente", 403);
+            }
+        }
+
         return await IncidentCommentRepository.getCommentsByIncidentId({
             incidentId: params.incidentId,
             status: params.status as IncidentCommentStatus | undefined,
@@ -47,19 +65,37 @@ export class IncidentCommentService {
             throw buildError("El incidentId no es un ObjectId válido", 400);
         }
 
-        if (!params.createdBy || !ObjectId.isValid(params.createdBy)) {
-            throw buildError("El createdBy es requerido y debe ser un ObjectId válido", 400);
-        }
-
         if (!params.comment || params.comment.trim() === "") {
             throw buildError("El comentario es requerido", 400);
+        }
+
+        const incident = await IncidentCommentRepository.getIncidentById(params.incidentId);
+
+        if (!incident) {
+            throw buildError("Incidente no encontrado", 404);
+        }
+
+        if (params.requesterRole === "operator") {
+            const isAssigned = incident.assignedTo?.toString() === params.requesterId;
+            if (!isAssigned) {
+                throw buildError("Solo podés comentar incidentes asignados a vos", 403);
+            }
+        }
+
+        if (params.requesterRole === "citizen") {
+            const isOwner = incident.createdBy.toString() === params.requesterId;
+            const isPublic = ["open", "assigned", "resolved"].includes(incident.status);
+
+            if (!isOwner && !isPublic) {
+                throw buildError("No tenés permiso para comentar este incidente", 403);
+            }
         }
 
         const now = new Date();
 
         return await IncidentCommentRepository.createComment({
             incidentId: new ObjectId(params.incidentId),
-            createdBy: new ObjectId(params.createdBy),
+            createdBy: new ObjectId(params.requesterId),
             comment: params.comment.trim(),
             photoUrl: params.photoUrl,
             status: "visible",

@@ -1,6 +1,7 @@
 import { ObjectId } from "mongodb";
 import { IncidentComment, IncidentCommentStatus } from "../data/incident-comment.model";
 import { mongoDb } from "../config/mongodb.config";
+import { Incident } from "../data/incident.model";
 
 const COLLECTION_NAME = "incident_comments";
 
@@ -84,6 +85,19 @@ export class IncidentCommentRepository {
             return comment ?? null;
         } catch (err) {
             throw new Error(`Error al obtener el comentario: ${err}`);
+        }
+    }
+
+    static async getIncidentById(incidentId: string): Promise<Incident | null> {
+        try {
+            const db = mongoDb();
+            const incident = await db
+                .collection<Incident>("incidents")
+                .findOne({ _id: new ObjectId(incidentId) });
+
+            return incident ?? null;
+        } catch (err) {
+            throw new Error(`Error al obtener el incidente: ${err}`);
         }
     }
 

@@ -1,11 +1,10 @@
 import { Router } from "express";
 import { DistrictController } from "../controllers/district.controller";
-import { requireAuth } from "../middlewares/auth.middleware"; 
+import { requireAuth } from "../middlewares/auth.middleware";
 
 const router = Router();
 
-router.get("/", DistrictController.getDistricts);
-//router.get("/", requireAuth, DistrictController.getDistricts);
+router.get("/", requireAuth, DistrictController.getDistricts);
 router.get("/:id", requireAuth, DistrictController.getDistrictById);
 router.post("/", requireAuth, DistrictController.createDistrict);
 

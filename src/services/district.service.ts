@@ -1,9 +1,9 @@
 import { ObjectId } from "mongodb";
 import { GeoJSONPolygon, GeoJSONMultiPolygon } from "../data/district.model";
 import { DistrictRepository } from "../repositorys/district.repository";
+import { AuthService } from "./auth.services";
 
 const VALID_POLYGON_TYPES = ["Polygon", "MultiPolygon"];
-
 
 interface GetDistrictByIdParams {
     id: string;
@@ -22,17 +22,27 @@ function validatePolygon(polygon: any): boolean {
     if (!polygon || !polygon.type || !polygon.coordinates) return false;
     if (!VALID_POLYGON_TYPES.includes(polygon.type)) return false;
     if (!Array.isArray(polygon.coordinates) || polygon.coordinates.length === 0) return false;
-
     return true;
 }
 
 export class DistrictService {
 
-    static async getDistricts() {
+    static async getDistricts(clerkId: string) {
+        const user = await AuthService.getAuthenticatedUser(clerkId);
+
+        if (user.role !== "superadmin") {
+            throw buildError("No tenés permisos para ver los distritos", 403);
+        }
+
         return await DistrictRepository.getDistricts();
     }
 
-    static async getDistrictById(params: GetDistrictByIdParams) {
+    static async getDistrictById(clerkId: string, params: GetDistrictByIdParams) {
+        const user = await AuthService.getAuthenticatedUser(clerkId);
+
+        if (user.role !== "superadmin") {
+            throw buildError("No tenés permisos para ver este distrito", 403);
+        }
 
         if (!ObjectId.isValid(params.id)) {
             throw buildError("El id no es un ObjectId válido", 400);
@@ -47,10 +57,15 @@ export class DistrictService {
         return district;
     }
 
-    static async createDistrict(params: CreateDistrictParams) {
+    static async createDistrict(clerkId: string, params: CreateDistrictParams) {
+        const user = await AuthService.getAuthenticatedUser(clerkId);
+
+        if (user.role !== "superadmin") {
+            throw buildError("No tenés permisos para crear distritos", 403);
+        }
 
         if (!params.name || params.name.trim() === "") {
-            throw buildError("El nombre     es requerido", 400);
+            throw buildError("El nombre es requerido", 400);
         }
 
         if (!validatePolygon(params.polygon)) {
@@ -59,9 +74,10 @@ export class DistrictService {
                 400
             );
         }
+
         const existingDistrict = await DistrictRepository.getDistrictByName(params.name.trim());
         if (existingDistrict) {
-            throw buildError("Ya existe un distrito con ese nombre", 409); // 409 Conflict
+            throw buildError("Ya existe un distrito con ese nombre", 409);
         }
 
         const now = new Date();
@@ -73,5 +89,4 @@ export class DistrictService {
             updatedAt: now,
         });
     }
-
 }
