@@ -18,7 +18,7 @@ export class ClerkRepository {
                 emailAddress: data.email,
                 redirectUrl: process.env.CLERK_INVITATION_REDIRECT_URL,
                 notify: true,
-                ignoreExisting: false,
+                ignoreExisting: true,
                 publicMetadata: {
                     role: data.role,
                     municipalityId: data.municipalityId
