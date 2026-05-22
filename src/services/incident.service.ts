@@ -2,6 +2,7 @@ import { ObjectId } from "mongodb";
 import { IncidentsRepository } from "../repositorys/incident.repository";
 import { AuthService } from "./auth.services";
 import { UserRepository } from "../repositorys/user.repository";
+import { CloudinaryRepository } from "../repositorys/cloudinary.repository";
 
 const VALID_PRIORITIES = ["low", "medium", "high"];
 const VALID_STATUSES = ["in_review", "open", "assigned", "resolved", "closed", "rejected"];
@@ -15,7 +16,7 @@ interface IncidentFilters {
 }
 
 export class IncidentsService {
-    static async crear(body: any, clerkUserId: string | null) {
+    static async crear(body: any, clerkUserId: string | null, image?: Express.Multer.File) {
         if (!clerkUserId) {
             throw new Error("Usuario no autenticado");
         }
@@ -42,16 +43,31 @@ export class IncidentsService {
             throw new Error("El municipio es obligatorio o inválido");
         }
 
-        if (!body.location || !Array.isArray(body.location.coordinates)) {
+        const location = typeof body.location === "string"
+            ? JSON.parse(body.location)
+            : body.location;
+
+        if (!location || !Array.isArray(location.coordinates)) {
             throw new Error("La ubicación es obligatoria");
         }
 
-        if (body.location.coordinates.length !== 2) {
+        if (location.coordinates.length !== 2) {
             throw new Error("Las coordenadas deben tener latitud y longitud");
         }
 
         if (body.priority && !VALID_PRIORITIES.includes(body.priority)) {
             throw new Error("La prioridad es inválida");
+        }
+
+        let imageData = null;
+
+        if (image) {
+            const uploadedImage = await CloudinaryRepository.uploadImage(image);
+
+            imageData = {
+                url: uploadedImage.secure_url,
+                publicId: uploadedImage.public_id
+            };
         }
 
         const newIncident = {
@@ -60,7 +76,8 @@ export class IncidentsService {
             categoryId: new ObjectId(body.categoryId),
             status: "in_review",
             priority: body.priority || "medium",
-            location: body.location,
+            location,
+            image: imageData,
             municipalityId: new ObjectId(body.municipalityId),
             createdBy: new ObjectId(authenticatedUser.id),
             createdAt: new Date(),

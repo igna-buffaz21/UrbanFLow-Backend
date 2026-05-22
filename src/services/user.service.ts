@@ -119,6 +119,14 @@ export class UserService {
 
         const municipalityId = this.resolveMunicipalityId(authenticatedUser, data);
 
+        const municipality = await MunicipalityRepository.getMunicipalityById(municipalityId?.toString() ?? "");
+
+        if (!municipality) {
+            const error = new Error("El municipio no existe");
+            (error as any).statusCode = 404;
+            throw error;
+        }
+
         const clerkInvitation = await ClerkRepository.createUserInvitation({
             email: normalizedEmail,
             role: data.role,
@@ -651,7 +659,7 @@ export class UserService {
     }
 
     private static validateInvitePermissions(authenticatedUser: User, data: InviteUserDto) {
-        if (authenticatedUser.role === "superadmin") {
+        if (authenticatedUser.role === "superadmin" && data.role === "admin") {
             return;
         }
 

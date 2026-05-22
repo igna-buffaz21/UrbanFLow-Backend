@@ -7,7 +7,11 @@ export class IncidentsController {
         try {
             const { userId } = getAuth(req);
 
-            const newIncident = await IncidentsService.crear(req.body, userId);
+            const newIncident = await IncidentsService.crear(
+                req.body,
+                userId,
+                req.file
+            );
 
             res.status(201).json(newIncident);
         } catch (err) {
@@ -58,7 +62,7 @@ export class IncidentsController {
                 priority: req.query.priority as string,
                 categoryId: req.query.categoryId as string,
                 assignedTo: req.query.assignedTo as string,
-            }; 
+            };
 
             const incidents = await IncidentsService.obtenerTodos(filters, userId);
 
