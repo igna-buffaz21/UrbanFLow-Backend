@@ -29,9 +29,9 @@ export class CategoryRepository {
                 .aggregate([
                     {
                         $project: {
-                            _id: 0,              
-                            id: { $toString: "$_id" }, 
-                            name: 1,                
+                            _id: 0,
+                            id: { $toString: "$_id" },
+                            name: 1,
                         },
                     },
                 ])
@@ -71,8 +71,20 @@ export class CategoryRepository {
         }
     }
 
+    // NUEVO: para verificar duplicados antes de crear
+    static async getCategoryByName(name: string): Promise<Category | null> {
+        try {
+            const db = mongoDb();
+            return await db
+                .collection<Category>(COLLECTION_NAME)
+                .findOne({ name });
+        } catch (err) {
+            throw new Error(`Error al buscar la categoría por nombre: ${err}`);
+        }
+    }
+
     static async createCategory(
-        data: Omit<Category, "_id">  
+        data: Omit<Category, "_id">
     ): Promise<CategoryDetailResponse> {
         try {
             const db = mongoDb();

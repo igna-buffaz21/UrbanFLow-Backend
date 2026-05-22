@@ -1,6 +1,7 @@
 import { ObjectId } from "mongodb";
 import { MunicipalityStatus } from "../data/municipality.model";
 import { MunicipalityRepository } from "../repositorys/municipality.repository";
+import { AuthService } from "./auth.services";
 
 const VALID_STATUSES: MunicipalityStatus[] = ["active", "inactive"];
 
@@ -27,7 +28,12 @@ function buildError(message: string, statusCode: number): Error {
 
 export class MunicipalityService {
 
-    static async getMunicipalities(params: GetMunicipalitiesParams) {
+    static async getMunicipalities(clerkId: string, params: GetMunicipalitiesParams) {
+        const user = await AuthService.getAuthenticatedUser(clerkId);
+
+        if (user.role !== "superadmin") {
+            throw buildError("No tenés permisos para ver las municipalidades", 403);
+        }
 
         if (params.status && !VALID_STATUSES.includes(params.status as MunicipalityStatus)) {
             throw buildError("El status debe ser 'active' o 'inactive'", 400);
@@ -42,7 +48,13 @@ export class MunicipalityService {
             districtId: params.districtId,
         });
     }
-    static async getMunicipalityById(id: string) {
+
+    static async getMunicipalityById(clerkId: string, id: string) {
+        const user = await AuthService.getAuthenticatedUser(clerkId);
+
+        if (user.role !== "superadmin") {
+            throw buildError("No tenés permisos para ver esta municipalidad", 403);
+        }
 
         if (!ObjectId.isValid(id)) {
             throw buildError("El id no es un ObjectId válido", 400);
@@ -57,7 +69,12 @@ export class MunicipalityService {
         return municipality;
     }
 
-    static async createMunicipality(params: CreateMunicipalityParams) {
+    static async createMunicipality(clerkId: string, params: CreateMunicipalityParams) {
+        const user = await AuthService.getAuthenticatedUser(clerkId);
+
+        if (user.role !== "superadmin") {
+            throw buildError("No tenés permisos para crear municipalidades", 403);
+        }
 
         if (!params.name || params.name.trim() === "") {
             throw buildError("El nombre es requerido", 400);
@@ -86,8 +103,13 @@ export class MunicipalityService {
             updatedAt: now,
         });
     }
-    
-    static async updateMunicipality(id: string, params: UpdateMunicipalityParams) {
+
+    static async updateMunicipality(clerkId: string, id: string, params: UpdateMunicipalityParams) {
+        const user = await AuthService.getAuthenticatedUser(clerkId);
+
+        if (user.role !== "superadmin") {
+            throw buildError("No tenés permisos para actualizar municipalidades", 403);
+        }
 
         if (!ObjectId.isValid(id)) {
             throw buildError("El id no es un ObjectId válido", 400);

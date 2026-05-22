@@ -9,6 +9,7 @@ export async function connectMongo(): Promise<void> {
   await client.connect();
   db = client.db(process.env.MONGO_DB);
   console.log("MongoDB conectado");
+  await db.collection("districts").createIndex({ polygon: "2dsphere" });
 }
 
 export function mongoDb(): Db {

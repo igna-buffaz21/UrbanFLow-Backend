@@ -1,15 +1,21 @@
 import { Request, Response, NextFunction } from "express";
+import { getAuth } from "@clerk/express";
 import { IncidentCommentService } from "../services/incident.comment.service";
-
+import { AuthService } from "../services/auth.services";
 export class IncidentCommentController {
 
     static async getCommentsByIncidentId(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
+            const { userId } = getAuth(req);
             const { id } = req.params;
             const { status } = req.query;
 
+            const requester = await AuthService.getAuthenticatedUser(userId!);
+
+
             const comments = await IncidentCommentService.getCommentsByIncidentId({
                 incidentId: id,
+                requesterId: requester.id!, requesterRole: requester.role,
                 status: status as string | undefined,
             });
 
@@ -21,12 +27,16 @@ export class IncidentCommentController {
 
     static async createComment(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
+            const { userId } = getAuth(req);
             const { id } = req.params;
-            const { comment, photoUrl, createdBy } = req.body;
+            const { comment, photoUrl } = req.body;
+
+            const requester = await AuthService.getAuthenticatedUser(userId!);
 
             const newComment = await IncidentCommentService.createComment({
                 incidentId: id,
-                createdBy,
+                requesterId: requester.id!,
+                requesterRole: requester.role,
                 comment,
                 photoUrl,
             });
@@ -39,13 +49,17 @@ export class IncidentCommentController {
 
     static async updateComment(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
+            const { userId } = getAuth(req);
             const { id } = req.params;
-            const { comment, photoUrl, requesterId } = req.body;
+            const { comment, photoUrl } = req.body;
 
-            const updated = await IncidentCommentService.updateComment(id, requesterId, {
-                comment,
-                photoUrl,
-            });
+            const requester = await AuthService.getAuthenticatedUser(userId!);
+
+            const updated = await IncidentCommentService.updateComment(
+                id,
+                requester.id!,
+                { comment, photoUrl }
+            );
 
             res.status(200).json(updated);
         } catch (err) {
@@ -55,10 +69,17 @@ export class IncidentCommentController {
 
     static async updateCommentStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
+            const { userId } = getAuth(req);
             const { id } = req.params;
-            const { status, requesterId } = req.body;
+            const { status } = req.body;
 
-            const updated = await IncidentCommentService.updateCommentStatus(id, requesterId, status);
+            const requester = await AuthService.getAuthenticatedUser(userId!);
+
+            const updated = await IncidentCommentService.updateCommentStatus(
+                id,
+                requester.id!,
+                status
+            );
 
             res.status(200).json(updated);
         } catch (err) {

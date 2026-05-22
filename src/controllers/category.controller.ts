@@ -1,29 +1,24 @@
-// src/controllers/category.controller.ts
-
 import { Request, Response, NextFunction } from "express";
+import { getAuth } from "@clerk/express";
 import { CategoryService } from "../services/category.service";
 
 export class CategoryController {
 
-    // GET /categories
-    // No recibe parámetros, devuelve el listado de categorías con id y name
     static async getCategories(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
-            const categories = await CategoryService.getCategories();
+            const { userId } = getAuth(req);
+            const categories = await CategoryService.getCategories(userId!);
             res.status(200).json(categories);
         } catch (err) {
-            // next(err) le pasa el error al middleware global de errores en index.ts
             next(err);
         }
     }
 
-    // POST /categories
-    // Los datos llegan por body
     static async createCategory(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
+            const { userId } = getAuth(req);
             const { name, description, iconUrl } = req.body;
-            const category = await CategoryService.createCategory({ name, description, iconUrl });
-            // 201 = Created, es el código correcto para un POST exitoso
+            const category = await CategoryService.createCategory(userId!, { name, description, iconUrl });
             res.status(201).json(category);
         } catch (err) {
             next(err);

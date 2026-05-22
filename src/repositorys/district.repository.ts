@@ -114,4 +114,42 @@ export class DistrictRepository {
             throw new Error(`Error al crear el distrito: ${err}`);
         }
     }
+
+    static async findDistrictByPoint(lng: number, lat: number): Promise<DistrictDetailResponse | null> {
+        try {
+            const db = mongoDb();
+
+            const result = await db
+                .collection<District>(COLLECTION_NAME)
+                .aggregate([
+                    {
+                        $match: {
+                            polygon: {
+                                $geoIntersects: {
+                                    $geometry: {
+                                        type: "Point",
+                                        coordinates: [lng, lat]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        $project: {
+                            _id: 0,
+                            id: { $toString: "$_id" },
+                            name: 1,
+                            polygon: 1,
+                            createdAt: 1,
+                            updatedAt: 1,
+                        }
+                    }
+                ])
+                .toArray();
+
+            return (result[0] as unknown as DistrictDetailResponse) ?? null;
+        } catch (err) {
+            throw new Error(`Error al buscar distrito por punto: ${err}`);
+        }
+    }
 }
