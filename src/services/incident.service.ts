@@ -3,6 +3,7 @@ import { IncidentsRepository } from "../repositorys/incident.repository";
 import { AuthService } from "./auth.services";
 import { UserRepository } from "../repositorys/user.repository";
 import { CloudinaryRepository } from "../repositorys/cloudinary.repository";
+import { DistrictRepository } from "../repositorys/district.repository";
 
 const VALID_PRIORITIES = ["low", "medium", "high"];
 const VALID_STATUSES = ["in_review", "open", "assigned", "resolved", "closed", "rejected"];
@@ -16,47 +17,63 @@ interface IncidentFilters {
 }
 
 export class IncidentsService {
-    static async crear(body: any, clerkUserId: string | null, image?: Express.Multer.File) {
+    static async crear( body: any, clerkUserId: string | null, image?: Express.Multer.File) {
         if (!clerkUserId) {
             throw new Error("Usuario no autenticado");
         }
 
         const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
 
-        if (authenticatedUser.role !== "citizen") {
-            throw new Error("Solo los ciudadanos pueden crear incidentes");
+        if (!authenticatedUser || !authenticatedUser.id) {
+            throw new Error("El usuario autenticado no existe en la base de datos");
         }
 
-        if (!authenticatedUser.id) {
-            throw new Error("No se pudo obtener el usuario ciudadano");
+        if (authenticatedUser.role !== "citizen") {
+            throw new Error("Solo los ciudadanos pueden crear incidentes");
         }
 
         if (!body.title || body.title.trim() === "") {
             throw new Error("El título es obligatorio");
         }
 
-        if (!body.categoryId || !ObjectId.isValid(body.categoryId)) {
-            throw new Error("La categoría es obligatoria o inválida");
-        }
-
-        if (!body.municipalityId || !ObjectId.isValid(body.municipalityId)) {
-            throw new Error("El municipio es obligatorio o inválido");
-        }
-
         const location = typeof body.location === "string"
             ? JSON.parse(body.location)
             : body.location;
 
-        if (!location || !Array.isArray(location.coordinates)) {
+        if (!location) {
             throw new Error("La ubicación es obligatoria");
         }
 
-        if (location.coordinates.length !== 2) {
-            throw new Error("Las coordenadas deben tener latitud y longitud");
+        if (location.type !== "Point") {
+            throw new Error("La ubicación debe ser de tipo Point");
         }
 
-        if (body.priority && !VALID_PRIORITIES.includes(body.priority)) {
-            throw new Error("La prioridad es inválida");
+        if (!Array.isArray(location.coordinates)) {
+            throw new Error("Las coordenadas son obligatorias");
+        }
+
+        if (location.coordinates.length !== 2) {
+            throw new Error("Las coordenadas deben tener longitud y latitud");
+        }
+
+        const [lng, lat] = location.coordinates;
+
+        if (typeof lng !== "number" || typeof lat !== "number") {
+            throw new Error("Las coordenadas deben ser numéricas");
+        }
+
+        if (lng < -180 || lng > 180) {
+            throw new Error("La longitud es inválida");
+        }
+
+        if (lat < -90 || lat > 90) {
+            throw new Error("La latitud es inválida");
+        }
+
+        const district = await DistrictRepository.findDistrictByPoint(lng, lat);
+
+        if (!district) {
+            throw new Error("No hay ningún municipio asociado a esta ubicación");
         }
 
         let imageData = null;
@@ -72,13 +89,16 @@ export class IncidentsService {
 
         const newIncident = {
             title: body.title.trim(),
-            description: body.description || "",
-            categoryId: new ObjectId(body.categoryId),
+            description: body.description?.trim() || "",
+            category: "Incident",
             status: "in_review",
-            priority: body.priority || "medium",
-            location,
+            priority: "low",
+            location: {
+                type: "Point",
+                coordinates: [lng, lat]
+            },
             image: imageData,
-            municipalityId: new ObjectId(body.municipalityId),
+            municipalityId: new ObjectId(district.id),
             createdBy: new ObjectId(authenticatedUser.id),
             createdAt: new Date(),
             updatedAt: new Date()
@@ -190,18 +210,56 @@ export class IncidentsService {
     }
 
 
-    static async obtenerParaMapa(clerkUserId: string | null) {
+    static async getMap(clerkUserId: string | null, query: any) {
         if (!clerkUserId) {
             throw new Error("Usuario no autenticado");
         }
 
         const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
 
-        if (!authenticatedUser.municipalityId || !ObjectId.isValid(authenticatedUser.municipalityId)) {
-            throw new Error("El usuario debe tener un municipio válido asociado");
+        if (!authenticatedUser || !authenticatedUser.id) {
+            throw new Error("El usuario autenticado no existe en la base de datos");
         }
 
-        return await IncidentsRepository.obtenerParaMapa(authenticatedUser.municipalityId);
+        const lng = Number(query.lng);
+        const lat = Number(query.lat);
+
+        if (Number.isNaN(lng) || Number.isNaN(lat)) {
+            throw new Error("Las coordenadas son obligatorias");
+        }
+
+        if (lng < -180 || lng > 180) {
+            throw new Error("La longitud es inválida");
+        }
+
+        if (lat < -90 || lat > 90) {
+            throw new Error("La latitud es inválida");
+        }
+
+        const radius = query.radius ? Number(query.radius) : 3000;
+
+        if (Number.isNaN(radius) || radius <= 0) {
+            throw new Error("El radio es inválido");
+        }
+
+        const MAX_RADIUS = 10000;
+
+        if (radius > MAX_RADIUS) {
+            throw new Error(`El radio máximo permitido es de ${MAX_RADIUS} metros`);
+        }
+
+        const district = await DistrictRepository.findDistrictByPoint(lng, lat);
+
+        if (!district) {
+            throw new Error("No hay ningún municipio asociado a esta ubicación");
+        }
+
+        return await IncidentsRepository.getMap({
+            lng,
+            lat,
+            radius,
+            municipalityId: district.id
+        });
     }
 
 

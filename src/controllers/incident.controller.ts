@@ -73,13 +73,16 @@ export class IncidentsController {
     }
 
 
-    static async obtenerParaMapa(req: Request, res: Response, next: NextFunction) {
+    static async getMap(req: Request, res: Response, next: NextFunction) {
         try {
-            const { userId } = getAuth(req);
+            const clerkUserId = getAuth(req).userId || null;
 
-            const incidents = await IncidentsService.obtenerParaMapa(userId);
+            const incidents = await IncidentsService.getMap(
+                clerkUserId,
+                req.query
+            );
 
-            res.json(incidents);
+            res.status(200).json(incidents);
         } catch (err) {
             next(err);
         }

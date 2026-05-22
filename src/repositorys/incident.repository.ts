@@ -8,6 +8,14 @@ interface IncidentFilters {
     assignedTo?: string;
 }
 
+interface GetMapParams {
+    lng: number;
+    lat: number;
+    radius: number;
+    municipalityId: string;
+};
+
+
 export class IncidentsRepository {
     static async crear(incident: object) {
         try {
@@ -20,6 +28,52 @@ export class IncidentsRepository {
             };
         } catch (err) {
             throw new Error("Error al crear el incidente: " + err);
+        }
+    }
+
+    static async getMap(params: GetMapParams) {
+        try {
+            const db = mongoDb();
+
+            const result = await db
+                .collection("incidents")
+                .aggregate([
+                    {
+                        $geoNear: {
+                            near: {
+                                type: "Point",
+                                coordinates: [params.lng, params.lat]
+                            },
+                            distanceField: "distance",
+                            maxDistance: params.radius,
+                            spherical: true,
+                            /*query: {
+                                municipalityId: new ObjectId(params.municipalityId)
+                            }*/
+                        }
+                    },
+                    {
+                        $project: {
+                            _id: 0,
+                            id: { $toString: "$_id" },
+                            title: 1,
+                            status: 1,
+                            priority: 1,
+                            location: 1,
+                            distance: 1
+                        }
+                    },
+                    {
+                        $sort: {
+                            distance: 1
+                        }
+                    }
+                ])
+                .toArray();
+
+            return result;
+        } catch (err) {
+            throw new Error(`Error al obtener incidentes para el mapa: ${err}`);
         }
     }
 

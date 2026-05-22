@@ -16,7 +16,7 @@ export class CategoryService {
     static async getCategories(clerkId: string) {
         const user = await AuthService.getAuthenticatedUser(clerkId);
 
-        const allowedRoles = ["admin", "operator", "citizen"];
+        const allowedRoles = ["superadmin", "admin", "operator", "citizen"];
         if (!allowedRoles.includes(user.role)) {
             throw buildError("No tenés permisos para ver las categorías", 403);
         }

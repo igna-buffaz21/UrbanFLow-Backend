@@ -11,7 +11,7 @@ router.post("/", requireAuth, IncidentsController.crear)
 router.get("/me", requireAuth, IncidentsController.obtenerMisIncidentes)
 router.get("/assigned", requireAuth, IncidentsController.obtenerAsignados);
 router.get("/", requireAuth, IncidentsController.obtenerTodos)
-router.get("/map", requireAuth, IncidentsController.obtenerParaMapa)
+router.get("/map", requireAuth, IncidentsController.getMap);
 router.patch("/:id/assign-operator", requireAuth, IncidentsController.asignarOperador);
 router.patch("/:id/status", requireAuth, IncidentsController.actualizarEstado);
 router.patch("/:id/priority", requireAuth, IncidentsController.actualizarPrioridad);
