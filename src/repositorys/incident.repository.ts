@@ -16,8 +16,29 @@ interface GetMapParams {
 };
 
 
+type UserRole = "superadmin" | "admin" | "operator" | "citizen";
+
+interface IncidentDetailResponse {
+  id: string;
+  title: string;
+  description: string;
+  photoUrl: string | null;
+  category: {
+    id: string;
+    name: string;
+  } | null;
+  priority: string;
+  createdAt: Date;
+  createdBy: {
+    id: string;
+    name: string;
+    photoUrl: string | null;
+  } | null;
+}
+
+
 export class IncidentsRepository {
-    static async crear(incident: object) {
+    static async createIncident(incident: object) {
         try {
             const db = mongoDb();
             const result = await db.collection("incidents").insertOne(incident);
@@ -375,7 +396,7 @@ export class IncidentsRepository {
     }
 
 
-    static async obtenerPorId(incidentId: ObjectId) {
+    static async getIncidentById(incidentId: ObjectId) {
         try {
             const db = mongoDb();
 
@@ -388,82 +409,65 @@ export class IncidentsRepository {
     }
 
 
-    // igna y agus, este método es para obtener el detalle completo del incidente, 
-    // con toda la info relacionada (usuario creador, operador asignado, categoría, municipio)
-    // pasa que sino devuelve tal cual lo q esta en mongo, obvio esta hecho con el chat
-    static async obtenerDetallePorId(incidentId: ObjectId, role: string) {
-        try {
-            const db = mongoDb();
+    static async getDetailById(incidentId: ObjectId): Promise<IncidentDetailResponse | null> {
+    try {
+        const db = mongoDb();
 
-            const incident: any = await db.collection("incidents").findOne({
-                _id: incidentId
-            });
+        const incident = await db.collection("incidents").findOne({
+        _id: incidentId
+        });
 
-            if (!incident) {
-                return null;
-            }
-
-            const createdById = incident.createdBy ? new ObjectId(incident.createdBy.toString()) : null;
-            const assignedToId = incident.assignedTo ? new ObjectId(incident.assignedTo.toString()) : null;
-            const municipalityId = incident.municipalityId ? new ObjectId(incident.municipalityId.toString()) : null;
-            const categoryId = incident.categoryId ? new ObjectId(incident.categoryId.toString()) : null;
-
-            const createdBy = createdById
-                ? await db.collection("users").findOne({ _id: createdById })
-                : null;
-
-            const assignedTo = assignedToId
-                ? await db.collection("users").findOne({ _id: assignedToId })
-                : null;
-
-            const municipality = municipalityId
-                ? await db.collection("municipalities").findOne({ _id: municipalityId })
-                : null;
-
-            const category = categoryId
-                ? await db.collection("categories").findOne({ _id: categoryId })
-                : null;
-
-            const response: any = {
-                id: incident._id.toString(),
-                title: incident.title,
-                description: incident.description,
-                category: {
-                    id: incident.categoryId?.toString(),
-                    name: category?.name || incident.category?.name || ""
-                },
-                status: incident.status,
-                priority: incident.priority,
-                location: incident.location,
-                municipality: {
-                    id: incident.municipalityId?.toString(),
-                    name: municipality?.name || ""
-                },
-                createdBy: {
-                    id: incident.createdBy?.toString(),
-                    name: createdBy?.name || ""
-                },
-                createdAt: incident.createdAt,
-                assignedAt: incident.assignedAt,
-                startedAt: incident.startedAt,
-                resolvedAt: incident.resolvedAt,
-                closedAt: incident.closedAt,
-                updatedAt: incident.updatedAt
-            };
-
-            if (role !== "citizen") {
-                response.assignedTo = assignedTo
-                    ? {
-                        id: assignedTo._id.toString(),
-                        name: assignedTo.name,
-                        photoUrl: assignedTo.photoUrl
-                    }
-                    : null;
-            }
-
-            return response;
-        } catch (err) {
-            throw new Error("Error al obtener el detalle del incidente: " + err);
+        if (!incident) {
+        return null;
         }
+
+        const createdById = incident.createdBy
+        ? new ObjectId(incident.createdBy.toString())
+        : null;
+
+        const categoryId = incident.categoryId
+        ? new ObjectId(incident.categoryId.toString())
+        : null;
+
+        const [createdBy, category] = await Promise.all([
+        createdById
+            ? db.collection("users").findOne({ _id: createdById })
+            : Promise.resolve(null),
+
+        categoryId
+            ? db.collection("categories").findOne({ _id: categoryId })
+            : Promise.resolve(null)
+        ]);
+
+        return {
+        id: incident._id.toString(),
+
+        title: incident.title,
+        description: incident.description,
+
+        photoUrl: incident.image?.url || null,
+
+        category: category
+            ? {
+                id: category._id.toString(),
+                name: category.name
+            }
+            : null,
+
+        priority: incident.priority,
+
+        createdAt: incident.createdAt,
+
+        createdBy: createdBy
+            ? {
+                id: createdBy._id.toString(),
+                name: createdBy.name,
+                photoUrl: createdBy.photoUrl || null
+            }
+            : null
+        };
+    } catch (err) {
+        throw new Error("Error al obtener el detalle del incidente: " + err);
+    }
     }
 }
