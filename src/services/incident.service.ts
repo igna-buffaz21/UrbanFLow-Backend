@@ -16,8 +16,15 @@ interface IncidentFilters {
     assignedTo?: string;
 }
 
+const USER_ROLES = {
+  SUPERADMIN: "superadmin",
+  ADMIN: "admin",
+  OPERATOR: "operator",
+  CITIZEN: "citizen"
+} as const;
+
 export class IncidentsService {
-    static async crear( body: any, clerkUserId: string | null, image?: Express.Multer.File) {
+    static async createIncident( body: any, clerkUserId: string | null, image?: Express.Multer.File) {
         if (!clerkUserId) {
             throw new Error("Usuario no autenticado");
         }
@@ -104,7 +111,7 @@ export class IncidentsService {
             updatedAt: new Date()
         };
 
-        return await IncidentsRepository.crear(newIncident);
+        return await IncidentsRepository.createIncident(newIncident);
     }
 
 
@@ -312,7 +319,7 @@ export class IncidentsService {
             throw new Error("El operador no pertenece al mismo municipio");
         }
 
-        const incident = await IncidentsRepository.obtenerPorId(new ObjectId(incidentId));
+        const incident = await IncidentsRepository.getIncidentById(new ObjectId(incidentId));
 
         if (!incident) {
             throw new Error("El incidente no existe");
@@ -356,7 +363,7 @@ export class IncidentsService {
             throw new Error("No tenés permisos para actualizar el estado");
         }
 
-        const incident = await IncidentsRepository.obtenerPorId(new ObjectId(incidentId));
+        const incident = await IncidentsRepository.getIncidentById(new ObjectId(incidentId));
 
         if (!incident) {
             throw new Error("El incidente no existe");
@@ -426,7 +433,7 @@ export class IncidentsService {
             throw new Error("El administrador no tiene municipio asignado");
         }
 
-        const incident = await IncidentsRepository.obtenerPorId(new ObjectId(incidentId));
+        const incident = await IncidentsRepository.getIncidentById(new ObjectId(incidentId));
 
         if (!incident) {
             throw new Error("El incidente no existe");
@@ -446,55 +453,33 @@ export class IncidentsService {
     }
 
 
-    static async obtenerPorId(clerkUserId: string | null, incidentId: string) {
-        if (!clerkUserId) {
-            throw new Error("Usuario no autenticado");
-        }
-
-        if (!incidentId || !ObjectId.isValid(incidentId)) {
-            throw new Error("El incidente es inválido");
-        }
-
-        const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
-
-        const incident = await IncidentsRepository.obtenerPorId(new ObjectId(incidentId));
-
-        if (!incident) {
-            throw new Error("El incidente no existe");
-        }
-
-        if (authenticatedUser.role === "admin") {
-            if (
-                !incident.municipalityId ||
-                incident.municipalityId.toString() !== authenticatedUser.municipalityId
-            ) {
-                throw new Error("No podés ver incidentes de otro municipio");
-            }
-        }
-
-        if (authenticatedUser.role === "operator") {
-            if (
-                !incident.assignedTo ||
-                incident.assignedTo.toString() !== authenticatedUser.id
-            ) {
-                throw new Error("Solo podés ver incidentes asignados a vos");
-            }
-        }
-
-        if (authenticatedUser.role === "citizen") {
-            const publicStatuses = ["open", "assigned", "resolved", "closed"];
-
-            const isOwner = incident.createdBy?.toString() === authenticatedUser.id;
-            const isPublic = publicStatuses.includes(incident.status);
-
-            if (!isOwner && !isPublic) {
-                throw new Error("No tenés permisos para ver este incidente");
-            }
-        }
-
-        return await IncidentsRepository.obtenerDetallePorId(
-            new ObjectId(incidentId),
-            authenticatedUser.role
-        );
+  static async getDetailById(clerkUserId: string | null, incidentId: string) {
+    if (!clerkUserId) {
+      throw new Error("Usuario no autenticado");
     }
+
+    if (!incidentId || !ObjectId.isValid(incidentId)) {
+      throw new Error("El incidente es inválido");
+    }
+
+    const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
+
+    if (!authenticatedUser) {
+      throw new Error("Usuario no encontrado");
+    }
+
+    if (authenticatedUser.role !== USER_ROLES.CITIZEN) {
+        throw new Error("Solo los ciudadanos pueden ver el detalle de un incidente");
+    }
+
+    const incidentObjectId = new ObjectId(incidentId);
+
+    const incident = await IncidentsRepository.getDetailById(incidentObjectId);
+
+    if (!incident) {
+      throw new Error("El incidente no existe");
+    }
+
+    return incident;
+  }
 }

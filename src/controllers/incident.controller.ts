@@ -3,11 +3,11 @@ import { getAuth } from "@clerk/express";
 import { IncidentsService } from "../services/incident.service";
 
 export class IncidentsController {
-    static async crear(req: Request, res: Response, next: NextFunction) {
+    static async createIncident(req: Request, res: Response, next: NextFunction) {
         try {
             const { userId } = getAuth(req);
 
-            const newIncident = await IncidentsService.crear(
+            const newIncident = await IncidentsService.createIncident(
                 req.body,
                 userId,
                 req.file
@@ -149,13 +149,13 @@ export class IncidentsController {
     }
 
 
-    static async obtenerPorId(req: Request, res: Response, next: NextFunction) {
+    static async getDetailById(req: Request, res: Response, next: NextFunction) {
         try {
             const { userId } = getAuth(req);
 
             const incidentId = req.params.id;
 
-            const incident = await IncidentsService.obtenerPorId(userId, incidentId);
+            const incident = await IncidentsService.getDetailById(userId, incidentId);
 
             res.json(incident);
         } catch (err) {
