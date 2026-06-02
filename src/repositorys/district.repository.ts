@@ -152,4 +152,54 @@ export class DistrictRepository {
             throw new Error(`Error al buscar distrito por punto: ${err}`);
         }
     }
+
+    static async findMunicipalityByPoint(
+        lng: number,
+        lat: number
+        ): Promise<string | null> {
+        try {
+            const db = mongoDb();
+
+            const result = await db
+            .collection<District>(COLLECTION_NAME)
+            .aggregate([
+                {
+                $match: {
+                    polygon: {
+                    $geoIntersects: {
+                        $geometry: {
+                        type: "Point",
+                        coordinates: [lng, lat],
+                        },
+                    },
+                    },
+                },
+                },
+                {
+                $lookup: {
+                    from: "municipalities",
+                    localField: "_id",
+                    foreignField: "districtId",
+                    as: "municipality",
+                },
+                },
+                {
+                $unwind: "$municipality",
+                },
+                {
+                $project: {
+                    _id: 0,
+                    municipalityId: {
+                    $toString: "$municipality._id",
+                    },
+                },
+                },
+            ])
+            .toArray();
+
+            return result[0]?.municipalityId ?? null;
+        } catch (err) {
+            throw new Error(`Error al buscar municipalidad por punto: ${err}`);
+        }
+        }
 }

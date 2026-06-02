@@ -7,6 +7,8 @@ export class IncidentsController {
         try {
             const { userId } = getAuth(req);
 
+            console.log("Creating incident with data:", req.body, "and file:", req.file);
+
             const newIncident = await IncidentsService.createIncident(
                 req.body,
                 userId,
@@ -82,7 +84,7 @@ export class IncidentsController {
                 req.query
             );
 
-            res.status(200).json(incidents);
+           res.status(200).json(incidents);
         } catch (err) {
             next(err);
         }

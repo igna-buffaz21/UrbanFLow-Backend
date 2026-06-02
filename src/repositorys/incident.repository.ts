@@ -18,23 +18,34 @@ interface GetMapParams {
 
 type UserRole = "superadmin" | "admin" | "operator" | "citizen";
 
-interface IncidentDetailResponse {
+export type GeoJSONPoint = {
+  type: "Point";
+  coordinates: [number, number]; // [lng, lat]
+};
+
+export type IncidentDetailResponse = {
   id: string;
   title: string;
   description: string;
   photoUrl: string | null;
+
+  location: GeoJSONPoint | null;
+
   category: {
     id: string;
     name: string;
   } | null;
+
   priority: string;
+
   createdAt: Date;
+
   createdBy: {
     id: string;
     name: string;
     photoUrl: string | null;
   } | null;
-}
+};
 
 
 export class IncidentsRepository {
@@ -409,12 +420,14 @@ export class IncidentsRepository {
     }
 
 
-    static async getDetailById(incidentId: ObjectId): Promise<IncidentDetailResponse | null> {
+    static async getDetailById(
+    incidentId: ObjectId
+    ): Promise<IncidentDetailResponse | null> {
     try {
         const db = mongoDb();
 
         const incident = await db.collection("incidents").findOne({
-        _id: incidentId
+        _id: incidentId,
         });
 
         if (!incident) {
@@ -436,7 +449,7 @@ export class IncidentsRepository {
 
         categoryId
             ? db.collection("categories").findOne({ _id: categoryId })
-            : Promise.resolve(null)
+            : Promise.resolve(null),
         ]);
 
         return {
@@ -447,10 +460,17 @@ export class IncidentsRepository {
 
         photoUrl: incident.image?.url || null,
 
+        location: incident.location
+            ? {
+                type: "Point",
+                coordinates: incident.location.coordinates,
+            }
+            : null,
+
         category: category
             ? {
                 id: category._id.toString(),
-                name: category.name
+                name: category.name,
             }
             : null,
 
@@ -462,9 +482,9 @@ export class IncidentsRepository {
             ? {
                 id: createdBy._id.toString(),
                 name: createdBy.name,
-                photoUrl: createdBy.photoUrl || null
+                photoUrl: createdBy.photoUrl || null,
             }
-            : null
+            : null,
         };
     } catch (err) {
         throw new Error("Error al obtener el detalle del incidente: " + err);

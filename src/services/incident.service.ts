@@ -77,9 +77,9 @@ export class IncidentsService {
             throw new Error("La latitud es inválida");
         }
 
-        const district = await DistrictRepository.findDistrictByPoint(lng, lat);
+        const municipality = await DistrictRepository.findMunicipalityByPoint(lng, lat);
 
-        if (!district) {
+        if (!municipality) {
             throw new Error("No hay ningún municipio asociado a esta ubicación");
         }
 
@@ -105,7 +105,7 @@ export class IncidentsService {
                 coordinates: [lng, lat]
             },
             image: imageData,
-            municipalityId: new ObjectId(district.id),
+            municipalityId: new ObjectId(municipality),
             createdBy: new ObjectId(authenticatedUser.id),
             createdAt: new Date(),
             updatedAt: new Date()
@@ -468,8 +468,8 @@ export class IncidentsService {
       throw new Error("Usuario no encontrado");
     }
 
-    if (authenticatedUser.role !== USER_ROLES.CITIZEN) {
-        throw new Error("Solo los ciudadanos pueden ver el detalle de un incidente");
+    if (authenticatedUser.role !== USER_ROLES.CITIZEN && authenticatedUser.role !== USER_ROLES.ADMIN && authenticatedUser.role !== USER_ROLES.OPERATOR) {
+        throw new Error("Solo los ciudadanos y administradores pueden ver el detalle de un incidente");
     }
 
     const incidentObjectId = new ObjectId(incidentId);
