@@ -474,7 +474,7 @@ export class IncidentsService {
 
     const incidentObjectId = new ObjectId(incidentId);
 
-    const incident = await IncidentsRepository.getDetailById(incidentObjectId);
+    const incident = await IncidentsRepository.getDetailById(incidentObjectId, clerkUserId);
 
     if (!incident) {
       throw new Error("El incidente no existe");

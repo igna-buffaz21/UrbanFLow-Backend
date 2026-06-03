@@ -45,6 +45,8 @@ export type IncidentDetailResponse = {
     name: string;
     photoUrl: string | null;
   } | null;
+
+  is_owner: boolean;
 };
 
 
@@ -421,7 +423,8 @@ export class IncidentsRepository {
 
 
     static async getDetailById(
-    incidentId: ObjectId
+    incidentId: ObjectId,
+    clerkUserId: string | null
     ): Promise<IncidentDetailResponse | null> {
     try {
         const db = mongoDb();
@@ -442,7 +445,7 @@ export class IncidentsRepository {
         ? new ObjectId(incident.categoryId.toString())
         : null;
 
-        const [createdBy, category] = await Promise.all([
+        const [createdBy, category, authenticatedUser] = await Promise.all([
         createdById
             ? db.collection("users").findOne({ _id: createdById })
             : Promise.resolve(null),
@@ -450,7 +453,15 @@ export class IncidentsRepository {
         categoryId
             ? db.collection("categories").findOne({ _id: categoryId })
             : Promise.resolve(null),
+
+        clerkUserId
+            ? db.collection("users").findOne({ clerkId: clerkUserId })
+            : Promise.resolve(null),
         ]);
+
+        const isOwner =
+        Boolean(authenticatedUser && createdById) &&
+        authenticatedUser!._id.toString() === createdById!.toString();
 
         return {
         id: incident._id.toString(),
@@ -477,6 +488,8 @@ export class IncidentsRepository {
         priority: incident.priority,
 
         createdAt: incident.createdAt,
+
+        is_owner: isOwner,
 
         createdBy: createdBy
             ? {
