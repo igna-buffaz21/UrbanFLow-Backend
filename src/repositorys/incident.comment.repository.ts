@@ -25,7 +25,89 @@ interface CommentResponse {
     updatedAt: Date;
 }
 
+interface MyIncidentCommentResponse {
+  commentId: string;
+  comment: string;
+  photoUrl?: string;
+  status: IncidentCommentStatus;
+  commentedAt: Date;
+  updatedAt: Date;
+  incident: {
+    id: string;
+    title: string;
+    description: string;
+    status: string;
+    priority?: string;
+    photoUrl?: string | null;
+    createdAt: Date;
+  };
+}
+
 export class IncidentCommentRepository {
+
+    static async getMyComments(
+        requesterId: string
+        ): Promise<MyIncidentCommentResponse[]> {
+        try {
+            const db = mongoDb();
+
+            const comments = await db
+            .collection<IncidentComment>(COLLECTION_NAME)
+            .aggregate([
+                {
+                $match: {
+                    createdBy: new ObjectId(requesterId),
+                    status: {
+                    $ne: "deleted",
+                    },
+                },
+                },
+                {
+                $lookup: {
+                    from: "incidents",
+                    localField: "incidentId",
+                    foreignField: "_id",
+                    as: "incidentData",
+                },
+                },
+                {
+                $unwind: "$incidentData",
+                },
+                {
+                $sort: {
+                    createdAt: -1,
+                },
+                },
+                {
+                $project: {
+                    _id: 0,
+                    commentId: { $toString: "$_id" },
+                    comment: 1,
+                    photoUrl: 1,
+                    status: 1,
+                    commentedAt: "$createdAt",
+                    updatedAt: 1,
+                    incident: {
+                    id: { $toString: "$incidentData._id" },
+                    title: "$incidentData.title",
+                    description: "$incidentData.description",
+                    status: "$incidentData.status",
+                    priority: "$incidentData.priority",
+                    photoUrl: {
+                        $ifNull: ["$incidentData.image.url", null],
+                    },
+                    createdAt: "$incidentData.createdAt",
+                    },
+                },
+                },
+            ])
+            .toArray();
+
+            return comments as unknown as MyIncidentCommentResponse[];
+    } catch (err) {
+        throw new Error(`Error al obtener mis comentarios: ${err}`);
+    }
+    }
 
     static async getCommentsByIncidentId(filters: GetCommentsFilters): Promise<CommentResponse[]> {
         try {

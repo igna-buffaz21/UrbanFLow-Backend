@@ -24,11 +24,23 @@ interface UpdateCommentParams {
     photoUrl?: string;
 }
 
+interface GetMyCommentsParams {
+  requesterId: string;
+}
+
 function buildError(message: string, statusCode: number): Error {
     return Object.assign(new Error(message), { statusCode });
 }
 
 export class IncidentCommentService {
+
+    static async getMyComments(params: GetMyCommentsParams) {
+        if (!ObjectId.isValid(params.requesterId)) {
+            throw buildError("El requesterId no es un ObjectId válido", 400);
+        }
+
+        return await IncidentCommentRepository.getMyComments(params.requesterId);
+    }
 
     static async getCommentsByIncidentId(params: GetCommentsParams) {
         if (!ObjectId.isValid(params.incidentId)) {

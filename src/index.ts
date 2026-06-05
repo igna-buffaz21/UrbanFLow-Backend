@@ -20,6 +20,7 @@ import healthRoutes from "./routers/health.router";
 import authRouter from "./routers/auth.router";
 import categoryRoutes from "./routers/category.router";
 import incidentCommentRoutes from "./routers/incident.comment.router";
+import incidentReportRoutes from "./routers/incident-report.router";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -48,6 +49,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/health", healthRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/incident-comments", incidentCommentRoutes);
+app.use("/api/incident-report", incidentReportRoutes);
 app.use(errorHandler);
 
 async function startServer() {

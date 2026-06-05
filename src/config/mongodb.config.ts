@@ -17,16 +17,26 @@ export async function connectMongo(): Promise<void> {
 
 async function createIndexes(): Promise<void> {
   await db.collection("districts").createIndex({
-    polygon: "2dsphere"
+    polygon: "2dsphere",
   });
 
   await db.collection("incidents").createIndex({
-    location: "2dsphere"
+    location: "2dsphere",
   });
 
   await db.collection("incidents").createIndex({
-    municipalityId: 1
+    municipalityId: 1,
   });
+
+  await db.collection("incident_reports").createIndex(
+    {
+      incidentId: 1,
+      createdBy: 1,
+    },
+    {
+      unique: true,
+    }
+  );
 }
 
 export function mongoDb(): Db {
