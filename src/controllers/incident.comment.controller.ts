@@ -4,6 +4,26 @@ import { IncidentCommentService } from "../services/incident.comment.service";
 import { AuthService } from "../services/auth.services";
 export class IncidentCommentController {
 
+    static async getMyComments(
+        req: Request,
+        res: Response,
+        next: NextFunction
+        ): Promise<void> {
+        try {
+            const { userId } = getAuth(req);
+
+            const requester = await AuthService.getAuthenticatedUser(userId!);
+
+            const comments = await IncidentCommentService.getMyComments({
+            requesterId: requester.id!,
+            });
+
+            res.status(200).json(comments);
+        } catch (err) {
+            next(err);
+        }
+    }
+
     static async getCommentsByIncidentId(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const { userId } = getAuth(req);
