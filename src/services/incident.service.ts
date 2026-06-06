@@ -6,8 +6,8 @@ import { CloudinaryRepository } from "../repositorys/cloudinary.repository";
 import { DistrictRepository } from "../repositorys/district.repository";
 
 const VALID_PRIORITIES = ["low", "medium", "high"];
-const VALID_STATUSES = ["in_review", "open", "assigned", "resolved", "closed", "rejected"];
-const VALID_ASSIGNED_STATUSES = ["assigned", "resolved"];
+const VALID_STATUSES = ["in_review", "open", "assigned", "in_progress", "resolved", "closed", "rejected"];
+const VALID_ASSIGNED_STATUSES = ["assigned", "in_progress", "resolved"];
 
 interface IncidentFilters {
     status?: string;
@@ -17,14 +17,14 @@ interface IncidentFilters {
 }
 
 const USER_ROLES = {
-  SUPERADMIN: "superadmin",
-  ADMIN: "admin",
-  OPERATOR: "operator",
-  CITIZEN: "citizen"
+    SUPERADMIN: "superadmin",
+    ADMIN: "admin",
+    OPERATOR: "operator",
+    CITIZEN: "citizen"
 } as const;
 
 export class IncidentsService {
-    static async createIncident( body: any, clerkUserId: string | null, image?: Express.Multer.File) {
+    static async createIncident(body: any, clerkUserId: string | null, image?: Express.Multer.File) {
         if (!clerkUserId) {
             throw new Error("Usuario no autenticado");
         }
@@ -343,7 +343,8 @@ export class IncidentsService {
     static async actualizarEstado(
         clerkUserId: string | null,
         incidentId: string,
-        status: string
+        status: string,
+        image?: Express.Multer.File
     ) {
         if (!clerkUserId) {
             throw new Error("Usuario no autenticado");
@@ -385,6 +386,22 @@ export class IncidentsService {
             ) {
                 throw new Error("Solo podés modificar incidentes asignados a vos");
             }
+
+            if (!["assigned", "in_progress", "resolved"].includes(status)) {
+                throw new Error("El operador solo puede usar los estados asignado, en progreso o resuelto");
+            }
+
+            if (status === "resolved") {
+                if (incident.status !== "in_progress") {
+                    const error = new Error("Para marcar como resuelto, primero el incidente debe estar en progreso");
+                    (error as any).statusCode = 400;
+                    throw error;
+                }
+
+                if (!image) {
+                    throw new Error("Para resolver el incidente tenés que subir una foto");
+                }
+            }
         }
 
         if (authenticatedUser.role === "citizen") {
@@ -399,9 +416,17 @@ export class IncidentsService {
             }
         }
 
+        let resolutionPhotoUrl: string | undefined;
+
+        if (status === "resolved" && image) {
+            const uploadedImage = await CloudinaryRepository.uploadImage(image);
+            resolutionPhotoUrl = uploadedImage.secure_url;
+        }
+
         return await IncidentsRepository.actualizarEstado(
             new ObjectId(incidentId),
-            status
+            status,
+            resolutionPhotoUrl
         );
     }
 
@@ -453,33 +478,82 @@ export class IncidentsService {
     }
 
 
-  static async getDetailById(clerkUserId: string | null, incidentId: string) {
-    if (!clerkUserId) {
-      throw new Error("Usuario no autenticado");
+    static async resolverIncidente(
+        clerkUserId: string | null,
+        incidentId: string,
+        body: any
+    ) {
+        if (!clerkUserId) {
+            throw new Error("Usuario no autenticado");
+        }
+
+        const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
+
+        if (authenticatedUser.role !== "operator") {
+            throw new Error("Solo los operadores pueden resolver incidentes");
+        }
+
+        if (!authenticatedUser.id || !ObjectId.isValid(authenticatedUser.id)) {
+            throw new Error("Usuario inválido");
+        }
+
+        if (!incidentId || !ObjectId.isValid(incidentId)) {
+            throw new Error("El incidente es inválido");
+        }
+
+        if (!body.resolutionPhotoUrl || typeof body.resolutionPhotoUrl !== "string") {
+            throw new Error("La foto de resolución es obligatoria");
+        }
+
+        const incident = await IncidentsRepository.getIncidentById(new ObjectId(incidentId));
+
+        if (!incident) {
+            throw new Error("El incidente no existe");
+        }
+
+        if (!incident.assignedTo || incident.assignedTo.toString() !== authenticatedUser.id) {
+            throw new Error("Solo podés resolver incidentes asignados a vos");
+        }
+
+        if (incident.status !== "assigned") {
+            throw new Error("Solo se pueden resolver incidentes asignados");
+        }
+
+        return await IncidentsRepository.resolverIncidente(
+            new ObjectId(incidentId),
+            new ObjectId(authenticatedUser.id),
+            body.resolutionPhotoUrl.trim(),
+        );
     }
 
-    if (!incidentId || !ObjectId.isValid(incidentId)) {
-      throw new Error("El incidente es inválido");
+
+    static async getDetailById(clerkUserId: string | null, incidentId: string) {
+        if (!clerkUserId) {
+            throw new Error("Usuario no autenticado");
+        }
+
+        if (!incidentId || !ObjectId.isValid(incidentId)) {
+            throw new Error("El incidente es inválido");
+        }
+
+        const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
+
+        if (!authenticatedUser) {
+            throw new Error("Usuario no encontrado");
+        }
+
+        if (authenticatedUser.role !== USER_ROLES.CITIZEN && authenticatedUser.role !== USER_ROLES.ADMIN && authenticatedUser.role !== USER_ROLES.OPERATOR) {
+            throw new Error("Solo los ciudadanos y administradores pueden ver el detalle de un incidente");
+        }
+
+        const incidentObjectId = new ObjectId(incidentId);
+
+        const incident = await IncidentsRepository.getDetailById(incidentObjectId, clerkUserId);
+
+        if (!incident) {
+            throw new Error("El incidente no existe");
+        }
+
+        return incident;
     }
-
-    const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
-
-    if (!authenticatedUser) {
-      throw new Error("Usuario no encontrado");
-    }
-
-    if (authenticatedUser.role !== USER_ROLES.CITIZEN && authenticatedUser.role !== USER_ROLES.ADMIN && authenticatedUser.role !== USER_ROLES.OPERATOR) {
-        throw new Error("Solo los ciudadanos y administradores pueden ver el detalle de un incidente");
-    }
-
-    const incidentObjectId = new ObjectId(incidentId);
-
-    const incident = await IncidentsRepository.getDetailById(incidentObjectId, clerkUserId);
-
-    if (!incident) {
-      throw new Error("El incidente no existe");
-    }
-
-    return incident;
-  }
 }
