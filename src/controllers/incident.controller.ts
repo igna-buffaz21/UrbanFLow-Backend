@@ -84,7 +84,7 @@ export class IncidentsController {
                 req.query
             );
 
-           res.status(200).json(incidents);
+            res.status(200).json(incidents);
         } catch (err) {
             next(err);
         }
@@ -121,7 +121,8 @@ export class IncidentsController {
             const incident = await IncidentsService.actualizarEstado(
                 userId,
                 incidentId,
-                status
+                status,
+                req.file
             );
 
             res.json(incident);
@@ -142,6 +143,25 @@ export class IncidentsController {
                 userId,
                 incidentId,
                 priority
+            );
+
+            res.json(incident);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+
+    static async resolverIncidente(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { userId } = getAuth(req);
+
+            const incidentId = req.params.id;
+
+            const incident = await IncidentsService.resolverIncidente(
+                userId,
+                incidentId,
+                req.body
             );
 
             res.json(incident);

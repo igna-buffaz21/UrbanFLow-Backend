@@ -19,34 +19,36 @@ interface GetMapParams {
 type UserRole = "superadmin" | "admin" | "operator" | "citizen";
 
 export type GeoJSONPoint = {
-  type: "Point";
-  coordinates: [number, number]; // [lng, lat]
+    type: "Point";
+    coordinates: [number, number]; // [lng, lat]
 };
 
 export type IncidentDetailResponse = {
-  id: string;
-  title: string;
-  description: string;
-  photoUrl: string | null;
-
-  location: GeoJSONPoint | null;
-
-  category: {
     id: string;
-    name: string;
-  } | null;
-
-  priority: string;
-
-  createdAt: Date;
-
-  createdBy: {
-    id: string;
-    name: string;
+    title: string;
+    description: string;
     photoUrl: string | null;
-  } | null;
 
-  is_owner: boolean;
+    resolutionPhotoUrl: string | null;
+    resolvedAt: Date | null;
+
+    location: GeoJSONPoint | null;
+
+    category: {
+        id: string;
+        name: string;
+    } | null;
+
+    priority: string;
+    createdAt: Date;
+
+    createdBy: {
+        id: string;
+        name: string;
+        photoUrl: string | null;
+    } | null;
+
+    is_owner: boolean;
 };
 
 
@@ -244,7 +246,7 @@ export class IncidentsRepository {
         try {
             const db = mongoDb();
 
-            const visibleStatuses = ["open", "assigned", "resolved", "in_review"];
+            const visibleStatuses = ["open", "assigned", "in_progress", "resolved", "in_review"];
 
             const incidents = await db.collection("incidents")
                 .find({
@@ -325,7 +327,7 @@ export class IncidentsRepository {
     }
 
 
-    static async actualizarEstado(incidentId: ObjectId, status: string) {
+    static async actualizarEstado(incidentId: ObjectId, status: string, resolutionPhotoUrl?: string) {
         try {
             const db = mongoDb();
 
@@ -334,8 +336,16 @@ export class IncidentsRepository {
                 updatedAt: new Date()
             };
 
+            if (status === "in_progress") {
+                updateData.startedAt = new Date();
+            }
+
             if (status === "resolved") {
                 updateData.resolvedAt = new Date();
+
+                if (resolutionPhotoUrl) {
+                    updateData.resolutionPhotoUrl = resolutionPhotoUrl;
+                }
             }
 
             if (status === "closed") {
@@ -409,6 +419,50 @@ export class IncidentsRepository {
     }
 
 
+    static async resolverIncidente(
+        incidentId: ObjectId,
+        operatorId: ObjectId,
+        resolutionPhotoUrl: string,
+    ) {
+        try {
+            const db = mongoDb();
+
+            const resolvedAt = new Date();
+
+            const result = await db.collection("incidents").findOneAndUpdate(
+                {
+                    _id: incidentId,
+                    assignedTo: operatorId
+                },
+                {
+                    $set: {
+                        status: "resolved",
+                        resolutionPhotoUrl,
+                        resolvedBy: operatorId,
+                        resolvedAt,
+                        updatedAt: resolvedAt
+                    }
+                },
+                { returnDocument: "after" }
+            );
+
+            if (!result) {
+                throw new Error("No se pudo resolver el incidente");
+            }
+
+            return {
+                id: result._id.toString(),
+                title: result.title,
+                status: result.status,
+                resolutionPhotoUrl: result.resolutionPhotoUrl,
+                resolvedBy: result.resolvedBy?.toString(),
+                resolvedAt: result.resolvedAt
+            };
+        } catch (err) {
+            throw new Error("Error al resolver el incidente: " + err);
+        }
+    }
+
     static async getIncidentById(incidentId: ObjectId) {
         try {
             const db = mongoDb();
@@ -423,84 +477,87 @@ export class IncidentsRepository {
 
 
     static async getDetailById(
-    incidentId: ObjectId,
-    clerkUserId: string | null
+        incidentId: ObjectId,
+        clerkUserId: string | null
     ): Promise<IncidentDetailResponse | null> {
-    try {
-        const db = mongoDb();
+        try {
+            const db = mongoDb();
 
-        const incident = await db.collection("incidents").findOne({
-        _id: incidentId,
-        });
+            const incident = await db.collection("incidents").findOne({
+                _id: incidentId,
+            });
 
-        if (!incident) {
-        return null;
+            if (!incident) {
+                return null;
+            }
+
+            const createdById = incident.createdBy
+                ? new ObjectId(incident.createdBy.toString())
+                : null;
+
+            const categoryId = incident.categoryId
+                ? new ObjectId(incident.categoryId.toString())
+                : null;
+
+            const [createdBy, category, authenticatedUser] = await Promise.all([
+                createdById
+                    ? db.collection("users").findOne({ _id: createdById })
+                    : Promise.resolve(null),
+
+                categoryId
+                    ? db.collection("categories").findOne({ _id: categoryId })
+                    : Promise.resolve(null),
+
+                clerkUserId
+                    ? db.collection("users").findOne({ clerkId: clerkUserId })
+                    : Promise.resolve(null),
+            ]);
+
+            const isOwner =
+                Boolean(authenticatedUser && createdById) &&
+                authenticatedUser!._id.toString() === createdById!.toString();
+
+            return {
+                id: incident._id.toString(),
+
+                title: incident.title,
+                description: incident.description,
+
+                photoUrl: incident.image?.url || null,
+
+                resolutionPhotoUrl: incident.resolutionPhotoUrl || null,
+                resolvedAt: incident.resolvedAt || null,
+
+                location: incident.location
+                    ? {
+                        type: "Point",
+                        coordinates: incident.location.coordinates,
+                    }
+                    : null,
+
+                category: category
+                    ? {
+                        id: category._id.toString(),
+                        name: category.name,
+                    }
+                    : null,
+
+                priority: incident.priority,
+
+                createdAt: incident.createdAt,
+
+                is_owner: isOwner,
+
+                createdBy: createdBy
+                    ? {
+                        id: createdBy._id.toString(),
+                        name: createdBy.name,
+                        photoUrl: createdBy.photoUrl || null,
+                    }
+                    : null,
+            };
+        } catch (err) {
+            throw new Error("Error al obtener el detalle del incidente: " + err);
         }
-
-        const createdById = incident.createdBy
-        ? new ObjectId(incident.createdBy.toString())
-        : null;
-
-        const categoryId = incident.categoryId
-        ? new ObjectId(incident.categoryId.toString())
-        : null;
-
-        const [createdBy, category, authenticatedUser] = await Promise.all([
-        createdById
-            ? db.collection("users").findOne({ _id: createdById })
-            : Promise.resolve(null),
-
-        categoryId
-            ? db.collection("categories").findOne({ _id: categoryId })
-            : Promise.resolve(null),
-
-        clerkUserId
-            ? db.collection("users").findOne({ clerkId: clerkUserId })
-            : Promise.resolve(null),
-        ]);
-
-        const isOwner =
-        Boolean(authenticatedUser && createdById) &&
-        authenticatedUser!._id.toString() === createdById!.toString();
-
-        return {
-        id: incident._id.toString(),
-
-        title: incident.title,
-        description: incident.description,
-
-        photoUrl: incident.image?.url || null,
-
-        location: incident.location
-            ? {
-                type: "Point",
-                coordinates: incident.location.coordinates,
-            }
-            : null,
-
-        category: category
-            ? {
-                id: category._id.toString(),
-                name: category.name,
-            }
-            : null,
-
-        priority: incident.priority,
-
-        createdAt: incident.createdAt,
-
-        is_owner: isOwner,
-
-        createdBy: createdBy
-            ? {
-                id: createdBy._id.toString(),
-                name: createdBy.name,
-                photoUrl: createdBy.photoUrl || null,
-            }
-            : null,
-        };
-    } catch (err) {
-        throw new Error("Error al obtener el detalle del incidente: " + err);
-    }
     }
 }
