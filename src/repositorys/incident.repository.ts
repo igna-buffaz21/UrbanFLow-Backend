@@ -29,33 +29,33 @@ export type IncidentDetailResponse = {
     title: string;
     description: string;
     photoUrl: string | null;
-
     resolutionPhotoUrl: string | null;
     resolvedAt: Date | null;
-
     location: GeoJSONPoint | null;
-
     category: {
         id: string;
         name: string;
     } | null;
-
     priority: string;
+    status: string;
     createdAt: Date;
-
     createdBy: {
         id: string;
         name: string;
         photoUrl: string | null;
     } | null;
-
+    assignedTo: {
+        id: string;
+        name: string;
+        photoUrl: string | null;
+    } | null;
     is_owner: boolean;
 };
 
 type FindNearbyForAiParams = {
-  lng: number;
-  lat: number;
-  radius: number;
+    lng: number;
+    lat: number;
+    radius: number;
 };
 
 
@@ -226,6 +226,7 @@ export class IncidentsRepository {
                     assignedAt: 1,
                     resolvedAt: 1,
                     resolutionTime: 1,
+                    location: 1,
                 })
                 .toArray();
 
@@ -239,6 +240,7 @@ export class IncidentsRepository {
                 assignedAt: incident.assignedAt,
                 resolvedAt: incident.resolvedAt,
                 resolutionTime: incident.resolutionTime,
+                location: incident.location ?? null,
             }));
         } catch (err) {
             throw new Error("Error al obtener los incidentes: " + err);
@@ -497,7 +499,11 @@ export class IncidentsRepository {
                 ? new ObjectId(incident.categoryId.toString())
                 : null;
 
-            const [createdBy, category, authenticatedUser] = await Promise.all([
+            const assignedToId = incident.assignedTo
+                ? new ObjectId(incident.assignedTo.toString())
+                : null;
+
+            const [createdBy, category, authenticatedUser, assignedTo] = await Promise.all([
                 createdById
                     ? db.collection("users").findOne({ _id: createdById })
                     : Promise.resolve(null),
@@ -509,6 +515,10 @@ export class IncidentsRepository {
                 clerkUserId
                     ? db.collection("users").findOne({ clerkId: clerkUserId })
                     : Promise.resolve(null),
+
+                assignedToId
+                    ? db.collection("users").findOne({ _id: assignedToId })
+                    : Promise.resolve(null),
             ]);
 
             const isOwner =
@@ -517,40 +527,39 @@ export class IncidentsRepository {
 
             return {
                 id: incident._id.toString(),
-
                 title: incident.title,
                 description: incident.description,
-
                 photoUrl: incident.image?.url || null,
-
                 resolutionPhotoUrl: incident.resolutionPhotoUrl || null,
                 resolvedAt: incident.resolvedAt || null,
-
                 location: incident.location
                     ? {
                         type: "Point",
                         coordinates: incident.location.coordinates,
                     }
                     : null,
-
                 category: category
                     ? {
                         id: category._id.toString(),
                         name: category.name,
                     }
                     : null,
-
                 priority: incident.priority,
-
+                status: incident.status,
                 createdAt: incident.createdAt,
-
                 is_owner: isOwner,
-
                 createdBy: createdBy
                     ? {
                         id: createdBy._id.toString(),
                         name: createdBy.name,
                         photoUrl: createdBy.photoUrl || null,
+                    }
+                    : null,
+                assignedTo: assignedTo
+                    ? {
+                        id: assignedTo._id.toString(),
+                        name: assignedTo.name,
+                        photoUrl: assignedTo.photoUrl || null,
                     }
                     : null,
             };
@@ -561,56 +570,56 @@ export class IncidentsRepository {
 
     static async findNearbyForAiDuplicateCheck(params: FindNearbyForAiParams) {
         try {
-        const db = mongoDb();
+            const db = mongoDb();
 
-        const result = await db
-            .collection("incidents")
-            .aggregate([
-            {
-                $geoNear: {
-                near: {
-                    type: "Point",
-                    coordinates: [params.lng, params.lat],
-                },
-                distanceField: "distanceMeters",
-                maxDistance: params.radius,
-                spherical: true,
-                query: {
-                    //municipalityId: new ObjectId(params.municipalityId),
-                    status: {
-                    $in: ["in_review", "open", "assigned", "in_progress"],
+            const result = await db
+                .collection("incidents")
+                .aggregate([
+                    {
+                        $geoNear: {
+                            near: {
+                                type: "Point",
+                                coordinates: [params.lng, params.lat],
+                            },
+                            distanceField: "distanceMeters",
+                            maxDistance: params.radius,
+                            spherical: true,
+                            query: {
+                                //municipalityId: new ObjectId(params.municipalityId),
+                                status: {
+                                    $in: ["in_review", "open", "assigned", "in_progress"],
+                                },
+                            },
+                        },
                     },
-                },
-                },
-            },
-            {
-                $project: {
-                _id: 0,
-                id: { $toString: "$_id" },
-                title: 1,
-                description: 1,
-                categoryName: 1,
-                status: 1,
-                createdAt: 1,
-                distanceMeters: {
-                    $round: ["$distanceMeters", 0],
-                },
-                },
-            },
-            {
-                $sort: {
-                distanceMeters: 1,
-                },
-            },
-            {
-                $limit: 10,
-            },
-            ])
-            .toArray();
+                    {
+                        $project: {
+                            _id: 0,
+                            id: { $toString: "$_id" },
+                            title: 1,
+                            description: 1,
+                            categoryName: 1,
+                            status: 1,
+                            createdAt: 1,
+                            distanceMeters: {
+                                $round: ["$distanceMeters", 0],
+                            },
+                        },
+                    },
+                    {
+                        $sort: {
+                            distanceMeters: 1,
+                        },
+                    },
+                    {
+                        $limit: 10,
+                    },
+                ])
+                .toArray();
 
-        return result as NearbyIncidentForAi[];
+            return result as NearbyIncidentForAi[];
         } catch (err) {
-        throw new Error(`Error al obtener incidentes cercanos para IA: ${err}`);
+            throw new Error(`Error al obtener incidentes cercanos para IA: ${err}`);
         }
-  }
+    }
 }
