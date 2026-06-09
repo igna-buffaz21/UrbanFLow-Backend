@@ -1,5 +1,6 @@
 import { ObjectId } from "mongodb";
 import { mongoDb } from "../config/mongodb.config";
+import { NearbyIncidentForAi } from "../data/types/ia/ia.type";
 
 interface IncidentFilters {
     status?: string;
@@ -49,6 +50,12 @@ export type IncidentDetailResponse = {
     } | null;
 
     is_owner: boolean;
+};
+
+type FindNearbyForAiParams = {
+  lng: number;
+  lat: number;
+  radius: number;
 };
 
 
@@ -113,7 +120,6 @@ export class IncidentsRepository {
         }
     }
 
-
     static async obtenerMisIncidentes(citizenId: string, status?: string) {
         try {
             const db = mongoDb();
@@ -148,7 +154,6 @@ export class IncidentsRepository {
             throw new Error("Error al obtener mis incidentes: " + err);
         }
     }
-
 
     static async obtenerAsignados(
         operatorId: string,
@@ -197,7 +202,6 @@ export class IncidentsRepository {
         }
     }
 
-
     static async obtenerTodos(filters: IncidentFilters, municipalityId: string) {
         try {
             const db = mongoDb();
@@ -240,7 +244,6 @@ export class IncidentsRepository {
             throw new Error("Error al obtener los incidentes: " + err);
         }
     }
-
 
     static async obtenerParaMapa(municipalityId: string) {
         try {
@@ -291,7 +294,6 @@ export class IncidentsRepository {
         }
     }
 
-
     static async asignarOperador(incidentId: ObjectId, operatorId: ObjectId) {
         try {
             const db = mongoDb();
@@ -325,7 +327,6 @@ export class IncidentsRepository {
             throw new Error("Error al asignar el operador: " + err);
         }
     }
-
 
     static async actualizarEstado(incidentId: ObjectId, status: string, resolutionPhotoUrl?: string) {
         try {
@@ -383,7 +384,6 @@ export class IncidentsRepository {
         }
     }
 
-
     static async actualizarPrioridad(
         incidentId: ObjectId,
         priority: string
@@ -417,7 +417,6 @@ export class IncidentsRepository {
             throw new Error("Error al actualizar la prioridad: " + err);
         }
     }
-
 
     static async resolverIncidente(
         incidentId: ObjectId,
@@ -474,7 +473,6 @@ export class IncidentsRepository {
             throw new Error("Error al obtener el incidente: " + err);
         }
     }
-
 
     static async getDetailById(
         incidentId: ObjectId,
@@ -560,4 +558,59 @@ export class IncidentsRepository {
             throw new Error("Error al obtener el detalle del incidente: " + err);
         }
     }
+
+    static async findNearbyForAiDuplicateCheck(params: FindNearbyForAiParams) {
+        try {
+        const db = mongoDb();
+
+        const result = await db
+            .collection("incidents")
+            .aggregate([
+            {
+                $geoNear: {
+                near: {
+                    type: "Point",
+                    coordinates: [params.lng, params.lat],
+                },
+                distanceField: "distanceMeters",
+                maxDistance: params.radius,
+                spherical: true,
+                query: {
+                    //municipalityId: new ObjectId(params.municipalityId),
+                    status: {
+                    $in: ["in_review", "open", "assigned", "in_progress"],
+                    },
+                },
+                },
+            },
+            {
+                $project: {
+                _id: 0,
+                id: { $toString: "$_id" },
+                title: 1,
+                description: 1,
+                categoryName: 1,
+                status: 1,
+                createdAt: 1,
+                distanceMeters: {
+                    $round: ["$distanceMeters", 0],
+                },
+                },
+            },
+            {
+                $sort: {
+                distanceMeters: 1,
+                },
+            },
+            {
+                $limit: 10,
+            },
+            ])
+            .toArray();
+
+        return result as NearbyIncidentForAi[];
+        } catch (err) {
+        throw new Error(`Error al obtener incidentes cercanos para IA: ${err}`);
+        }
+  }
 }

@@ -4,7 +4,7 @@ import { requireAuth } from "../middlewares/auth.middleware";
 
 const router = Router();
 
-router.get("/", requireAuth, CategoryController.getCategories);
-router.post("/", requireAuth, CategoryController.createCategory);
+router.get("/", CategoryController.getCategories);
+router.post("/", CategoryController.createCategory);
 
 export default router;
