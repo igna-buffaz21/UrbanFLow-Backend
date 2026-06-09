@@ -325,6 +325,20 @@ export class IncidentsService {
             throw new Error("El incidente no existe");
         }
 
+        const ASSIGNABLE_STATUSES = ["in_review", "open"];
+
+        if (!ASSIGNABLE_STATUSES.includes(incident.status)) {
+            throw new Error(
+                "Solo se pueden asignar operadores a incidentes en revisión o abiertos"
+            );
+        }
+
+        if (incident.assignedTo) {
+            throw new Error(
+                "Este incidente ya tiene un operador asignado"
+            );
+        }
+
         if (!incident.municipalityId) {
             throw new Error("El incidente no tiene municipio asignado");
         }
