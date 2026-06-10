@@ -230,6 +230,13 @@ export class IncidentsRepository {
                 })
                 .toArray();
 
+            console.log(
+                incidents.map(i => ({
+                    title: i.title,
+                    priority: i.priority,
+                }))
+            );
+
             return incidents.map((incident: any) => ({
                 id: incident._id.toString(),
                 title: incident.title,
@@ -270,6 +277,14 @@ export class IncidentsRepository {
                     location: 1
                 })
                 .toArray();
+
+            console.log(
+                incidents.map(i => ({
+                    title: i.title,
+                    priority: i.priority,
+                    municipalityId: i.municipalityId?.toString(),
+                }))
+            );
 
             return {
                 type: "FeatureCollection",
