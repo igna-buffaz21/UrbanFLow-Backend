@@ -5,6 +5,7 @@ import type {
   AiIncidentValidationResult,
   ValidateIncidentWithAiInput,
   NearbyIncidentForAi,
+  ValidateIncidentWithAiInputDEV,
 } from "../data/types/ia/ia.type";
 
 import { IncidentsRepository } from "../repositorys/incident.repository";
@@ -20,8 +21,8 @@ const ai = new GoogleGenAI({
 });
 
 export class AiService {
-  static async validateIncident(
-    input: ValidateIncidentWithAiInput
+  static async validateIncidentDEV(
+    input: ValidateIncidentWithAiInputDEV
   ): Promise<AiIncidentValidationResult> {
     const lng = Number(input.lng);
     const lat = Number(input.lat);
@@ -94,6 +95,62 @@ export class AiService {
     this.validateAiIncidentResponse(parsedResponse, nearbyIncidents);
 
     return parsedResponse; 
+  } //endpoint de desarrollo, eliminar para produccion
+
+  static async validateIncident(
+    input: ValidateIncidentWithAiInput
+  ): Promise<AiIncidentValidationResult> {
+    const nearbyIncidents = input.nearbyIncidents ?? [];
+
+    const prompt = buildValidateIncidentPrompt(
+      input.title,
+      input.description,
+      nearbyIncidents
+    );
+
+    console.log("Prompt enviado a Gemini:", prompt);
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-flash-lite",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: prompt,
+            },
+            {
+              inlineData: {
+                mimeType: input.mimeType,
+                data: input.imageBase64,
+              },
+            },
+          ],
+        },
+      ],
+      config: {
+        temperature: 0.1,
+        responseMimeType: "application/json",
+      },
+    });
+
+    const text = response.text;
+
+    if (!text) {
+      throw new Error("Gemini no devolvió una respuesta válida");
+    }
+
+    let parsedResponse: AiIncidentValidationResult;
+
+    try {
+      parsedResponse = JSON.parse(text) as AiIncidentValidationResult;
+    } catch {
+      throw new Error("Gemini devolvió un JSON inválido");
+    }
+
+    this.validateAiIncidentResponse(parsedResponse, nearbyIncidents);
+
+    return parsedResponse;
   }
 
   private static validateAiIncidentResponse(
@@ -132,6 +189,34 @@ export class AiService {
     }
 
     if (
+      typeof response.categoryId !== "string" ||
+      response.categoryId.trim() === ""
+    ) {
+      throw new Error("Gemini devolvió un categoryId inválido");
+    }
+
+    if (
+      typeof response.categoryName !== "string" ||
+      response.categoryName.trim() === ""
+    ) {
+      throw new Error("Gemini devolvió un categoryName inválido");
+    }
+
+    if (
+      typeof response.normalizedTitle !== "string" ||
+      response.normalizedTitle.trim() === ""
+    ) {
+      throw new Error("Gemini devolvió un normalizedTitle inválido");
+    }
+
+    if (
+      typeof response.normalizedDescription !== "string" ||
+      response.normalizedDescription.trim() === ""
+    ) {
+      throw new Error("Gemini devolvió un normalizedDescription inválido");
+    }
+
+    if (
       !Number.isInteger(response.aiUrgencyScore) ||
       response.aiUrgencyScore < 1 ||
       response.aiUrgencyScore > 5
@@ -156,6 +241,13 @@ export class AiService {
     }
 
     if (
+      response.duplicateOfIncidentId !== null &&
+      typeof response.duplicateOfIncidentId !== "string"
+    ) {
+      throw new Error("Gemini devolvió un duplicateOfIncidentId inválido");
+    }
+
+    if (
       typeof response.duplicateConfidence !== "number" ||
       response.duplicateConfidence < 0 ||
       response.duplicateConfidence > 1
@@ -163,8 +255,26 @@ export class AiService {
       throw new Error("Gemini devolvió un duplicateConfidence inválido");
     }
 
+    if (
+      response.duplicateReason !== null &&
+      typeof response.duplicateReason !== "string"
+    ) {
+      throw new Error("Gemini devolvió un duplicateReason inválido");
+    }
+
+    if (
+      response.rejectionReason !== null &&
+      typeof response.rejectionReason !== "string"
+    ) {
+      throw new Error("Gemini devolvió un rejectionReason inválido");
+    }
+
     if (!Array.isArray(response.reasons)) {
       throw new Error("Gemini devolvió reasons inválido");
+    }
+
+    if (response.reasons.some((reason) => typeof reason !== "string")) {
+      throw new Error("Gemini devolvió reasons con valores inválidos");
     }
 
     if (response.decision === "open" && response.isValid !== true) {
@@ -196,7 +306,14 @@ export class AiService {
         throw new Error("Un incidente rechazado no puede tener duplicateConfidence");
       }
 
-      if (!response.rejectionReason) {
+      if (response.duplicateReason !== null) {
+        throw new Error("Un incidente rechazado no puede tener duplicateReason");
+      }
+
+      if (
+        typeof response.rejectionReason !== "string" ||
+        response.rejectionReason.trim() === ""
+      ) {
         throw new Error("Un incidente rechazado debe tener rejectionReason");
       }
     }
@@ -218,6 +335,10 @@ export class AiService {
         throw new Error("Un incidente nuevo no debe tener duplicateConfidence");
       }
 
+      if (response.duplicateReason !== null) {
+        throw new Error("Un incidente nuevo no debe tener duplicateReason");
+      }
+
       if (response.rejectionReason !== null) {
         throw new Error("Un incidente válido no debe tener rejectionReason");
       }
@@ -234,7 +355,10 @@ export class AiService {
         throw new Error("La confirmación de duplicado requiere isPossibleDuplicate true");
       }
 
-      if (!response.duplicateOfIncidentId) {
+      if (
+        typeof response.duplicateOfIncidentId !== "string" ||
+        response.duplicateOfIncidentId.trim() === ""
+      ) {
         throw new Error("La confirmación de duplicado requiere duplicateOfIncidentId");
       }
 
@@ -252,7 +376,10 @@ export class AiService {
         );
       }
 
-      if (!response.duplicateReason) {
+      if (
+        typeof response.duplicateReason !== "string" ||
+        response.duplicateReason.trim() === ""
+      ) {
         throw new Error("La confirmación de duplicado requiere duplicateReason");
       }
 

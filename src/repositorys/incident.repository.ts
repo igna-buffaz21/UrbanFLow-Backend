@@ -24,32 +24,41 @@ export type GeoJSONPoint = {
     coordinates: [number, number]; // [lng, lat]
 };
 
-export type IncidentDetailResponse = {
+export interface IncidentDetailResponse {
     id: string;
+
     title: string;
-    description: string;
+    description?: string;
+
     photoUrl: string | null;
     resolutionPhotoUrl: string | null;
     resolvedAt: Date | null;
     location: GeoJSONPoint | null;
+
     category: {
         id: string;
         name: string;
     } | null;
     priority: string;
     status: string;
+
+    aiUrgencyScore: number;
+
     createdAt: Date;
+
+    is_owner: boolean;
+
     createdBy: {
         id: string;
         name: string;
         photoUrl: string | null;
     } | null;
+
     assignedTo: {
         id: string;
         name: string;
         photoUrl: string | null;
     } | null;
-    is_owner: boolean;
 };
 
 type FindNearbyForAiParams = {
@@ -540,6 +549,8 @@ export class IncidentsRepository {
                 Boolean(authenticatedUser && createdById) &&
                 authenticatedUser!._id.toString() === createdById!.toString();
 
+            const aiUrgencyScore = incident.aiValidation?.aiUrgencyScore ?? 1;
+
             return {
                 id: incident._id.toString(),
                 title: incident.title,
@@ -561,6 +572,9 @@ export class IncidentsRepository {
                     : null,
                 priority: incident.priority,
                 status: incident.status,
+
+                aiUrgencyScore,
+
                 createdAt: incident.createdAt,
                 is_owner: isOwner,
                 createdBy: createdBy

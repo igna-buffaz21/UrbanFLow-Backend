@@ -4,8 +4,14 @@ import { AuthService } from "./auth.services";
 import { UserRepository } from "../repositorys/user.repository";
 import { CloudinaryRepository } from "../repositorys/cloudinary.repository";
 import { DistrictRepository } from "../repositorys/district.repository";
+<<<<<<< HEAD
 import { ImageService } from "./image.service";
 import { ImageTypes } from "../data/types/image.types";
+=======
+import { AiService } from "./ia.service";
+import { IncidentReportRepository } from "../repositorys/incident-report.repository";
+
+>>>>>>> 363ce7e (refactor: se agrego la funcionalidad de la ia al modulo incidentes)
 const VALID_PRIORITIES = ["low", "medium", "high"];
 const VALID_STATUSES = ["in_review", "open", "assigned", "in_progress", "resolved", "closed", "rejected"];
 const VALID_ASSIGNED_STATUSES = ["assigned", "in_progress", "resolved"];
@@ -17,6 +23,8 @@ interface IncidentFilters {
     assignedTo?: string;
 }
 
+type IncidentPriority = "low" | "medium" | "high";
+
 const USER_ROLES = {
     SUPERADMIN: "superadmin",
     ADMIN: "admin",
@@ -24,8 +32,32 @@ const USER_ROLES = {
     CITIZEN: "citizen"
 } as const;
 
+
+function getReportBoost(reportsCount: number): number {
+    if (reportsCount <= 1) return 0;
+    if (reportsCount <= 4) return 1;
+    return 2;
+}
+
+function calculatePriorityScore(params: {
+    aiUrgencyScore: number;
+    reportsCount: number;
+}): number {
+    return params.aiUrgencyScore + getReportBoost(params.reportsCount);
+}
+
+function getPriorityFromScore(priorityScore: number): IncidentPriority {
+    if (priorityScore <= 2) return "low";
+    if (priorityScore <= 4) return "medium";
+    return "high";
+}
+
 export class IncidentsService {
-    static async createIncident(body: any, clerkUserId: string | null, image?: Express.Multer.File) {
+    static async createIncident(
+        body: any,
+        clerkUserId: string | null,
+        image?: Express.Multer.File
+    ) {
         if (!clerkUserId) {
             throw new Error("Usuario no autenticado");
         }
@@ -44,9 +76,19 @@ export class IncidentsService {
             throw new Error("El título es obligatorio");
         }
 
-        const location = typeof body.location === "string"
-            ? JSON.parse(body.location)
-            : body.location;
+        const title = body.title.trim();
+        const description = body.description?.trim() || "";
+
+        let location;
+
+        try {
+            location =
+                typeof body.location === "string"
+                    ? JSON.parse(body.location)
+                    : body.location;
+        } catch {
+            throw new Error("La ubicación tiene un formato inválido");
+        }
 
         if (!location) {
             throw new Error("La ubicación es obligatoria");
@@ -78,14 +120,32 @@ export class IncidentsService {
             throw new Error("La latitud es inválida");
         }
 
+        if (!image) {
+            throw new Error("La imagen es obligatoria para validar el incidente");
+        }
+
+        if (!image.mimetype) {
+            throw new Error("La imagen no tiene un formato válido");
+        }
+
+        if (!image.buffer) {
+            throw new Error("No se pudo procesar la imagen");
+        }
+
         const municipality = await DistrictRepository.findMunicipalityByPoint(lng, lat);
 
         if (!municipality) {
             throw new Error("No hay ningún municipio asociado a esta ubicación");
         }
 
-        let imageData = null;
+        const nearbyIncidents =
+            await IncidentsRepository.findNearbyForAiDuplicateCheck({
+                lng,
+                lat,
+                radius: 100,
+            });
 
+<<<<<<< HEAD
         const incidentId = new ObjectId();
 
         if (image) {
@@ -95,28 +155,146 @@ export class IncidentsService {
             imageData = {
                 url: uploadedImage.secure_url,
                 publicId: uploadedImage.public_id
+=======
+        const aiResult = await AiService.validateIncident({
+            title,
+            description,
+            mimeType: image.mimetype,
+            imageBase64: image.buffer.toString("base64"),
+            nearbyIncidents,
+        });
+
+        if (aiResult.nextAction === "reject") {
+            const uploadedImage = await CloudinaryRepository.uploadImage(image);
+
+            /*const rejectedReport =
+                await RejectedIncidentReportsRepository.createRejectedIncidentReport({
+                    title,
+                    description,
+
+                    normalizedTitle: aiResult.normalizedTitle,
+                    normalizedDescription: aiResult.normalizedDescription,
+
+                    categoryId: new ObjectId(aiResult.categoryId),
+
+                    location: {
+                        type: "Point",
+                        coordinates: [lng, lat],
+                    },
+
+                    image: {
+                        url: uploadedImage.secure_url,
+                        publicId: uploadedImage.public_id,
+                    },
+
+                    municipalityId: new ObjectId(municipality),
+                    createdBy: new ObjectId(authenticatedUser.id),
+
+                    aiValidation: {
+                        confidence: aiResult.confidence,
+                        aiUrgencyScore: aiResult.aiUrgencyScore,
+
+                        imageMatchesText: aiResult.imageMatchesText,
+                        imageContainsIncident: aiResult.imageContainsIncident,
+                        possibleFakeOrIrrelevantImage:
+                            aiResult.possibleFakeOrIrrelevantImage,
+
+                        rejectionReason:
+                            aiResult.rejectionReason ?? "Reporte rechazado por la IA",
+                        reasons: aiResult.reasons,
+                    },
+
+                    createdAt: new Date(),
+                }); */
+
+            return {
+                status: "rejected",
+                message: "El incidente fue rechazado por la IA",
+                data: {
+                    //rejectedReportId: rejectedReport._id,
+                    rejectionReason: aiResult.rejectionReason,
+                    reasons: aiResult.reasons,
+                },
+>>>>>>> 363ce7e (refactor: se agrego la funcionalidad de la ia al modulo incidentes)
             };
         }
 
+        if (aiResult.nextAction === "ask_user_duplicate_confirmation") {
+            return {
+                status: "possible_duplicate",
+                message: "El incidente podría ser un duplicado",
+                data: {
+                    duplicateOfIncidentId: aiResult.duplicateOfIncidentId,
+                    duplicateConfidence: aiResult.duplicateConfidence,
+                    duplicateReason: aiResult.duplicateReason,
+                    aiResult,
+                },
+            };
+        }
+
+        const uploadedImage = await CloudinaryRepository.uploadImage(image);
+
         const newIncident = {
+<<<<<<< HEAD
             _id: incidentId,
             title: body.title.trim(),
             description: body.description?.trim() || "",
             category: "Incident",
+=======
+            title: aiResult.normalizedTitle,
+            description: aiResult.normalizedDescription,
+
+            originalTitle: title,
+            originalDescription: description,
+
+            categoryId: new ObjectId(aiResult.categoryId),
+
+>>>>>>> 363ce7e (refactor: se agrego la funcionalidad de la ia al modulo incidentes)
             status: "in_review",
-            priority: "low",
+
             location: {
                 type: "Point",
-                coordinates: [lng, lat]
+                coordinates: [lng, lat],
             },
-            image: imageData,
+
+            image: {
+                url: uploadedImage.secure_url,
+                publicId: uploadedImage.public_id,
+            },
+
             municipalityId: new ObjectId(municipality),
             createdBy: new ObjectId(authenticatedUser.id),
+
+            aiValidation: {
+                confidence: aiResult.confidence,
+                aiUrgencyScore: aiResult.aiUrgencyScore,
+
+                imageMatchesText: aiResult.imageMatchesText,
+                imageContainsIncident: aiResult.imageContainsIncident,
+                possibleFakeOrIrrelevantImage: aiResult.possibleFakeOrIrrelevantImage,
+
+                isPossibleDuplicate: aiResult.isPossibleDuplicate,
+                duplicateOfIncidentId: aiResult.duplicateOfIncidentId
+                    ? new ObjectId(aiResult.duplicateOfIncidentId)
+                    : null,
+                duplicateConfidence: aiResult.duplicateConfidence,
+                duplicateReason: aiResult.duplicateReason,
+
+                rejectionReason: aiResult.rejectionReason,
+                reasons: aiResult.reasons,
+            },
+
             createdAt: new Date(),
-            updatedAt: new Date()
+            updatedAt: new Date(),
         };
 
-        return await IncidentsRepository.createIncident(newIncident);
+        const incident = await IncidentsRepository.createIncident(newIncident);
+
+        return {
+            status: "created",
+            message: "Incidente creado correctamente",
+            data: incident,
+        };
     }
 
 
@@ -563,18 +741,44 @@ export class IncidentsService {
             throw new Error("Usuario no encontrado");
         }
 
-        if (authenticatedUser.role !== USER_ROLES.CITIZEN && authenticatedUser.role !== USER_ROLES.ADMIN && authenticatedUser.role !== USER_ROLES.OPERATOR) {
+        if (
+            authenticatedUser.role !== USER_ROLES.CITIZEN &&
+            authenticatedUser.role !== USER_ROLES.ADMIN &&
+            authenticatedUser.role !== USER_ROLES.OPERATOR
+        ) {
             throw new Error("Solo los ciudadanos y administradores pueden ver el detalle de un incidente");
         }
 
         const incidentObjectId = new ObjectId(incidentId);
 
-        const incident = await IncidentsRepository.getDetailById(incidentObjectId, clerkUserId);
+        const incident = await IncidentsRepository.getDetailById(
+            incidentObjectId,
+            clerkUserId
+        );
 
         if (!incident) {
             throw new Error("El incidente no existe");
         }
 
-        return incident;
+        const reportsCount = await IncidentReportRepository.countReportsByIncidentId(
+            incidentId
+        );
+
+        const aiUrgencyScore = incident.aiUrgencyScore ?? 1;
+
+        const priorityScore = calculatePriorityScore({
+            aiUrgencyScore,
+            reportsCount,
+        });
+
+        const priority = getPriorityFromScore(priorityScore);
+
+        return {
+            ...incident,
+            reportsCount,
+            aiUrgencyScore,
+            priorityScore,
+            priority,
+        };
     }
 }
