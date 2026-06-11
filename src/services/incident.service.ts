@@ -4,7 +4,8 @@ import { AuthService } from "./auth.services";
 import { UserRepository } from "../repositorys/user.repository";
 import { CloudinaryRepository } from "../repositorys/cloudinary.repository";
 import { DistrictRepository } from "../repositorys/district.repository";
-
+import { ImageService } from "./image.service";
+import { ImageTypes } from "../data/types/image.types";
 const VALID_PRIORITIES = ["low", "medium", "high"];
 const VALID_STATUSES = ["in_review", "open", "assigned", "in_progress", "resolved", "closed", "rejected"];
 const VALID_ASSIGNED_STATUSES = ["assigned", "in_progress", "resolved"];
@@ -85,9 +86,12 @@ export class IncidentsService {
 
         let imageData = null;
 
-        if (image) {
-            const uploadedImage = await CloudinaryRepository.uploadImage(image);
+        const incidentId = new ObjectId();
 
+        if (image) {
+            const processedImage = await ImageService.processImage(image);
+            const publicId = ImageTypes.buildIncidentImageName(incidentId.toString());
+            const uploadedImage = await CloudinaryRepository.uploadProcessedImage(processedImage, publicId);
             imageData = {
                 url: uploadedImage.secure_url,
                 publicId: uploadedImage.public_id
@@ -95,6 +99,7 @@ export class IncidentsService {
         }
 
         const newIncident = {
+            _id: incidentId,
             title: body.title.trim(),
             description: body.description?.trim() || "",
             category: "Incident",
@@ -325,6 +330,20 @@ export class IncidentsService {
             throw new Error("El incidente no existe");
         }
 
+        const ASSIGNABLE_STATUSES = ["in_review", "open"];
+
+        if (!ASSIGNABLE_STATUSES.includes(incident.status)) {
+            throw new Error(
+                "Solo se pueden asignar operadores a incidentes en revisión o abiertos"
+            );
+        }
+
+        if (incident.assignedTo) {
+            throw new Error(
+                "Este incidente ya tiene un operador asignado"
+            );
+        }
+
         if (!incident.municipalityId) {
             throw new Error("El incidente no tiene municipio asignado");
         }
@@ -419,7 +438,9 @@ export class IncidentsService {
         let resolutionPhotoUrl: string | undefined;
 
         if (status === "resolved" && image) {
-            const uploadedImage = await CloudinaryRepository.uploadImage(image);
+            const processedImage = await ImageService.processImage(image);
+            const publicId = ImageTypes.buildResolutionImageName(incidentId);
+            const uploadedImage = await CloudinaryRepository.uploadProcessedImage(processedImage, publicId);
             resolutionPhotoUrl = uploadedImage.secure_url;
         }
 
