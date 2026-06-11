@@ -1,39 +1,16 @@
 import { ObjectId } from "mongodb";
 import { District } from "../data/district.model";
 import { mongoDb } from "../config/mongodb.config";
-
-const COLLECTION_NAME = "districts";
-
-interface DistrictListResponse {
-    id: string;
-    name: string;
-}
-
-interface DistrictDetailResponse {
-    id: string;
-    name: string;
-    polygon: District["polygon"];
-    createdAt: Date;
-    updatedAt: Date;
-}
-
-interface DistrictDetailResponse {
-    id: string;
-    name: string;
-    polygon: District["polygon"];
-    createdAt: Date;
-    updatedAt: Date;
-}
-
+import { DistrictDetailResponse, DistrictListResponse } from "../data/types/districts/districts.type";
+import { COLLECTION_NAMES } from "../data/types/global/const.global";
 
 export class DistrictRepository {
-
     static async getDistricts(): Promise<DistrictListResponse[]> {
         try {
             const db = mongoDb();
 
             const districts = await db
-                .collection<District>(COLLECTION_NAME)
+                .collection<District>(COLLECTION_NAMES.DISTRICTS)
                 .aggregate([
                     {
                         $project: {
@@ -56,7 +33,7 @@ export class DistrictRepository {
             const db = mongoDb();
 
             const result = await db
-                .collection<District>(COLLECTION_NAME)
+                .collection<District>(COLLECTION_NAMES.DISTRICTS)
                 .aggregate([
                     { $match: { _id: new ObjectId(id) } },
                     {
@@ -82,7 +59,7 @@ export class DistrictRepository {
         try {
             const db = mongoDb();
             const district = await db
-                .collection<District>(COLLECTION_NAME)
+                .collection<District>(COLLECTION_NAMES.DISTRICTS)
                 .findOne({ name: name });
 
             return district;
@@ -98,7 +75,7 @@ export class DistrictRepository {
             const db = mongoDb();
 
             const result = await db
-                .collection<District>(COLLECTION_NAME)
+                .collection<District>(COLLECTION_NAMES.DISTRICTS)
                 .insertOne(data as District);
 
             const created = await DistrictRepository.getDistrictById(
@@ -120,7 +97,7 @@ export class DistrictRepository {
             const db = mongoDb();
 
             const result = await db
-                .collection<District>(COLLECTION_NAME)
+                .collection<District>(COLLECTION_NAMES.DISTRICTS)
                 .aggregate([
                     {
                         $match: {
@@ -161,7 +138,7 @@ export class DistrictRepository {
             const db = mongoDb();
 
             const result = await db
-            .collection<District>(COLLECTION_NAME)
+            .collection<District>(COLLECTION_NAMES.DISTRICTS)
             .aggregate([
                 {
                 $match: {
@@ -201,5 +178,5 @@ export class DistrictRepository {
         } catch (err) {
             throw new Error(`Error al buscar municipalidad por punto: ${err}`);
         }
-        }
+    }
 }

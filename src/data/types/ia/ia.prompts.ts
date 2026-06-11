@@ -95,8 +95,8 @@ Analizá título, descripción, imagen e incidentes cercanos.
 El reporte nuevo está en estado "in_review".
 
 Datos del nuevo reporte:
-Título: ${title}
-Descripción: ${description}
+Título original escrito por el usuario: ${title}
+Descripción original escrita por el usuario: ${description}
 
 Categorías disponibles:
 ${JSON.stringify(INCIDENT_CATEGORIES)}
@@ -110,6 +110,81 @@ Decidir si el reporte nuevo debe:
 - rechazarse,
 - o pedir confirmación al usuario porque parece duplicado de un incidente existente.
 
+Además, debés generar una versión corregida y publicable del título y la descripción:
+- "normalizedTitle"
+- "normalizedDescription"
+
+Normalización del texto:
+- La normalización debe ser mínima y natural.
+- No reescribas el reporte como si fuera un informe técnico.
+- No uses lenguaje institucional, robótico o demasiado formal.
+- Mantené el estilo simple del usuario, pero sin insultos ni vulgaridades.
+- Corregí errores de ortografía evidentes.
+- Corregí puntuación básica si hace falta.
+- Eliminá insultos, malas palabras o agresiones.
+- No cambies palabras comunes por términos técnicos innecesarios.
+- No cambies "pozo" por "bache" salvo que el usuario haya usado "bache".
+- No cambies "calle" por "calzada" salvo que el usuario lo haya dicho.
+- No cambies "motos" por "vehículos y motocicletas".
+- No agregues detalles que el usuario no escribió.
+- No agregues frases como "se observa", "requiere intervención", "circulación vehicular" o similares salvo que el usuario lo haya expresado así.
+- No exageres ni suavices el problema.
+- La versión normalizada debe parecer escrita por una persona común, no por una oficina municipal.
+- El objetivo es limpiar y corregir, no reformular completamente.
+
+Regla principal:
+- Conservá la mayor cantidad posible de palabras originales.
+- Solo modificá lo necesario para:
+  - corregir ortografía,
+  - eliminar lenguaje ofensivo,
+  - mejorar claridad mínima,
+  - y dejar el texto apto para publicarse.
+
+Ejemplos de normalización correcta:
+- Original: "poso en la esquina hijos de puta y un peligro para las motos"
+  Normalizado:
+  Título: "Pozo en la esquina"
+  Descripción: "Hay un pozo en la esquina y es un peligro para las motos."
+
+- Original: "hay un pozo de mierda en la calle, arreglen esto"
+  Normalizado:
+  Título: "Pozo en la calle"
+  Descripción: "Hay un pozo en la calle, arreglen esto."
+
+- Original: "la luz esta apagada hace dias loco, es un desastre"
+  Normalizado:
+  Título: "Luz apagada hace días"
+  Descripción: "La luz está apagada hace días."
+
+- Original: "unos mugrientos tiraron basura en la esquina"
+  Normalizado:
+  Título: "Basura en la esquina"
+  Descripción: "Hay basura en la esquina."
+
+- Original: "este semaforo no anda una porqueria"
+  Normalizado:
+  Título: "Semáforo no anda"
+  Descripción: "Este semáforo no anda."
+
+Ejemplos de normalización incorrecta:
+- Original: "poso en la esquina hijos de puta y un peligro para las motos"
+  Incorrecto:
+  Título: "Bache en la calzada"
+  Descripción: "Se observa un bache en la calzada que representa un riesgo para la circulación de vehículos y motocicletas."
+
+Motivo:
+- Cambia "pozo" por "bache".
+- Cambia "esquina" por "calzada".
+- Cambia "motos" por "vehículos y motocicletas".
+- Usa lenguaje técnico.
+- Agrega información no escrita por el usuario.
+
+Importante:
+- La presencia de malas palabras NO debe causar rechazo automático.
+- Si el reporte describe un incidente municipal real, debe evaluarse normalmente.
+- Solo limpiá el lenguaje ofensivo en "normalizedTitle" y "normalizedDescription".
+- Rechazá únicamente si el reporte no es válido por las reglas de validación.
+
 Aprobá solo si:
 - Describe un problema urbano/municipal real.
 - La imagen muestra evidencia relacionada.
@@ -122,6 +197,12 @@ Rechazá si:
 - La imagen es selfie, meme, captura, negra o irrelevante.
 - Texto e imagen no coinciden.
 - El problema no corresponde a intervención municipal.
+
+No rechaces solo por:
+- Mala ortografía.
+- Lenguaje informal.
+- Enojo del usuario.
+- Malas palabras, siempre que el incidente sea real y municipal.
 
 Detección de duplicados:
 - Analizá los incidentes cercanos recibidos.
@@ -187,6 +268,13 @@ Reglas de urgencia:
 - Si rechazás, "aiUrgencyScore" debe ser 1.
 
 Reglas de salida:
+- Siempre devolvé "normalizedTitle" y "normalizedDescription".
+- Si el reporte es válido, ambos campos deben contener una versión limpia, natural y corregida.
+- Si el reporte es inválido, igual devolvé una versión corregida si es posible.
+- Si el texto original es imposible de interpretar, usá:
+  - "normalizedTitle": "Reporte inválido"
+  - "normalizedDescription": "No se pudo interpretar el contenido del reporte."
+
 - Si es válido y no es duplicado:
   - "decision": "open"
   - "isValid": true
@@ -231,6 +319,7 @@ Reglas estrictas:
 - "duplicateOfIncidentId" solo puede ser null o un id exacto incluido en los incidentes cercanos.
 - No inventes incidentes cercanos.
 - No inventes IDs.
+- No agregues campos extra.
 - Respondé SOLO JSON válido.
 - No uses markdown.
 - No agregues texto extra fuera del JSON.
@@ -245,6 +334,9 @@ Formato exacto:
   "categoryId": string,
   "categoryName": string,
   "aiUrgencyScore": number,
+
+  "normalizedTitle": string,
+  "normalizedDescription": string,
 
   "imageMatchesText": boolean,
   "imageContainsIncident": boolean,

@@ -1,22 +1,15 @@
 import { ObjectId } from "mongodb";
 import { mongoDb } from "../config/mongodb.config";
 import { User, UserRole, UserStatus } from "../data/user.model";
-
-const USERS_COLLECTION = "users";
-const MUNICIPALITIES_COLLECTION = "municipalities";
-
-interface GetUsersFilters {
-    role?: UserRole;
-    status?: UserStatus;
-    municipalityId?: ObjectId;
-}
+import { GetUsersFilters } from "../data/types/user/user.type";
+import { COLLECTION_NAMES } from "../data/types/global/const.global";
 
 export class UserRepository {
     static async createUser(user: User): Promise<User> {
         try {
             const db = mongoDb();
 
-            const result = await db.collection<User>(USERS_COLLECTION).insertOne(user);
+            const result = await db.collection<User>(COLLECTION_NAMES.USERS).insertOne(user);
 
             return {
                 ...user,
@@ -32,7 +25,7 @@ export class UserRepository {
         try {
             const db = mongoDb();
 
-            return await db.collection<User>(USERS_COLLECTION).findOne({
+            return await db.collection<User>(COLLECTION_NAMES.USERS).findOne({
                 clerkId
             });
         } 
@@ -45,7 +38,7 @@ export class UserRepository {
         try {
             const db = mongoDb();
 
-            return await db.collection<User>(USERS_COLLECTION).findOne({
+            return await db.collection<User>(COLLECTION_NAMES.USERS).findOne({
                 email
             });
         } 
@@ -58,7 +51,7 @@ export class UserRepository {
         try {
             const db = mongoDb();
 
-            return await db.collection<User>(USERS_COLLECTION).findOne({ _id: id });
+            return await db.collection<User>(COLLECTION_NAMES.USERS).findOne({ _id: id });
         } 
         catch (err) {
             throw new Error("Error al obtener el usuario por ID: " + err);
@@ -69,7 +62,7 @@ export class UserRepository {
     try {
         const db = mongoDb();
 
-        return await db.collection<User>(USERS_COLLECTION).findOne({
+        return await db.collection<User>(COLLECTION_NAMES.USERS).findOne({
             email,
             status: "pending"
         });
@@ -90,7 +83,7 @@ export class UserRepository {
         try {
             const db = mongoDb();
 
-            const result = await db.collection<User>(USERS_COLLECTION).findOneAndUpdate(
+            const result = await db.collection<User>(COLLECTION_NAMES.USERS).findOneAndUpdate(
                 { _id: userId },
                 {
                     $set: {
@@ -129,14 +122,14 @@ export class UserRepository {
                 match.municipalityId = filters.municipalityId;
             }
 
-            return await db.collection<User>(USERS_COLLECTION)
+            return await db.collection<User>(COLLECTION_NAMES.USERS)
                 .aggregate([
                     {
                         $match: match
                     },
                     {
                         $lookup: {
-                            from: MUNICIPALITIES_COLLECTION,
+                            from: COLLECTION_NAMES.MUNICIPALITIES,
                             localField: "municipalityId",
                             foreignField: "_id",
                             as: "municipality"
@@ -185,7 +178,7 @@ export class UserRepository {
         try {
             const db = mongoDb();
 
-            const updatedUser = await db.collection<User>(USERS_COLLECTION).findOneAndUpdate(
+            const updatedUser = await db.collection<User>(COLLECTION_NAMES.USERS).findOneAndUpdate(
                 { _id: id },
                 {
                     $set: {

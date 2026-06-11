@@ -9,7 +9,7 @@ export type AiIncidentUrgency =
   | "high"
   | "critical";
 
-export type ValidateIncidentWithAiInput = {
+export type ValidateIncidentWithAiInputDEV = {
   title: string;
   description: string;
   mimeType: string;
@@ -19,6 +19,14 @@ export type ValidateIncidentWithAiInput = {
   lat: number;
   municipalityId?: string;
 };
+
+export interface ValidateIncidentWithAiInput {
+  title: string;
+  description: string;
+  mimeType: string;
+  imageBase64: string;
+  nearbyIncidents?: NearbyIncidentForAi[];
+}
 
 export type NearbyIncidentForAi = {
   id: string;
@@ -47,6 +55,9 @@ export interface AiIncidentValidationResult {
   imageMatchesText: boolean; // indica si coincide el cuerpo con la foto
   imageContainsIncident: boolean; // indica si la foto contiene un incidente municipal
   possibleFakeOrIrrelevantImage: boolean; // indica si la foto es posiblemente falsa o irrelevante
+
+  normalizedTitle: string; // título normalizado por la IA, por ejemplo corrigiendo errores ortográficos, eliminando emojis, etc.
+  normalizedDescription: string; // descripción normalizada por la IA, por ejemplo corrigiendo errores ortográficos, eliminando emojis, etc.
 
   isPossibleDuplicate: boolean; // indica si la IA considera que el incidente podría ser un duplicado de otro incidente existente
   duplicateOfIncidentId: string | null; // aqui iria el ID del incidente existente del cual la IA considera que el incidente podría ser un duplicado, o null si no hay ningún incidente del cual la IA considere que podría ser un duplicado
