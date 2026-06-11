@@ -2,15 +2,14 @@ import { ObjectId } from "mongodb";
 
 import { mongoDb } from "../config/mongodb.config";
 import type { IncidentAiReview } from "../data/incident-review.model";
-
-const COLLECTION_NAME = "incident_ai_reviews";
+import { COLLECTION_NAMES } from "../data/types/global/const.global";
 
 export class IncidentAiReviewRepository {
   static async create(review: IncidentAiReview): Promise<IncidentAiReview> {
     const db = mongoDb();
 
     const result = await db
-      .collection<IncidentAiReview>(COLLECTION_NAME)
+      .collection<IncidentAiReview>(COLLECTION_NAMES.INCIDENT_AI_REVIEWS)
       .insertOne(review);
 
     return {
@@ -23,7 +22,7 @@ export class IncidentAiReviewRepository {
     const db = mongoDb();
 
     return await db
-      .collection<IncidentAiReview>(COLLECTION_NAME)
+      .collection<IncidentAiReview>(COLLECTION_NAMES.INCIDENT_AI_REVIEWS)
       .findOne({ _id: reviewId });
   }
 
@@ -33,7 +32,7 @@ export class IncidentAiReviewRepository {
     const db = mongoDb();
 
     return await db
-      .collection<IncidentAiReview>(COLLECTION_NAME)
+      .collection<IncidentAiReview>(COLLECTION_NAMES.INCIDENT_AI_REVIEWS)
       .findOne(
         { incidentId },
         {
@@ -50,7 +49,7 @@ export class IncidentAiReviewRepository {
     const db = mongoDb();
 
     return await db
-      .collection<IncidentAiReview>(COLLECTION_NAME)
+      .collection<IncidentAiReview>(COLLECTION_NAMES.INCIDENT_AI_REVIEWS)
       .find({ incidentId })
       .sort({ createdAt: -1 })
       .toArray();
@@ -60,7 +59,7 @@ export class IncidentAiReviewRepository {
     const db = mongoDb();
 
     return await db
-      .collection<IncidentAiReview>(COLLECTION_NAME)
+      .collection<IncidentAiReview>(COLLECTION_NAMES.INCIDENT_AI_REVIEWS)
       .find({ decision: "rejected" })
       .sort({ createdAt: -1 })
       .toArray();
@@ -70,7 +69,7 @@ export class IncidentAiReviewRepository {
     const db = mongoDb();
 
     return await db
-      .collection<IncidentAiReview>(COLLECTION_NAME)
+      .collection<IncidentAiReview>(COLLECTION_NAMES.INCIDENT_AI_REVIEWS)
       .find({ decision: "open" })
       .sort({ createdAt: -1 })
       .toArray();

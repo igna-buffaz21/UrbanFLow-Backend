@@ -2,46 +2,8 @@ import { ObjectId } from "mongodb";
 import { IncidentComment, IncidentCommentStatus } from "../data/incident-comment.model";
 import { mongoDb } from "../config/mongodb.config";
 import { Incident } from "../data/incident.model";
-
-const COLLECTION_NAME = "incident_comments";
-
-interface GetCommentsFilters {
-    incidentId: string;
-    status?: IncidentCommentStatus;
-}
-
-interface CommentResponse {
-    id: string;
-    comment: string;
-    photoUrl?: string;
-    status: IncidentCommentStatus;
-    createdBy: {
-        id: string;
-        name: string;
-        role: string;
-        photoUrl?: string;
-    };
-    createdAt: Date;
-    updatedAt: Date;
-}
-
-interface MyIncidentCommentResponse {
-  commentId: string;
-  comment: string;
-  photoUrl?: string;
-  status: IncidentCommentStatus;
-  commentedAt: Date;
-  updatedAt: Date;
-  incident: {
-    id: string;
-    title: string;
-    description: string;
-    status: string;
-    priority?: string;
-    photoUrl?: string | null;
-    createdAt: Date;
-  };
-}
+import { GetCommentsFilters, CommentResponse, MyIncidentCommentResponse } from "../data/types/incident/incidents-comment.type";
+import { COLLECTION_NAMES } from "../data/types/global/const.global";
 
 export class IncidentCommentRepository {
 
@@ -52,7 +14,7 @@ export class IncidentCommentRepository {
             const db = mongoDb();
 
             const comments = await db
-            .collection<IncidentComment>(COLLECTION_NAME)
+            .collection<IncidentComment>(COLLECTION_NAMES.INCIDENT_COMMENTS)
             .aggregate([
                 {
                 $match: {
@@ -119,7 +81,7 @@ export class IncidentCommentRepository {
             };
 
             const comments = await db
-                .collection<IncidentComment>(COLLECTION_NAME)
+                .collection<IncidentComment>(COLLECTION_NAMES.INCIDENT_COMMENTS)
                 .aggregate([
                     { $match: matchStage },
                     {
@@ -161,7 +123,7 @@ export class IncidentCommentRepository {
         try {
             const db = mongoDb();
             const comment = await db
-                .collection<IncidentComment>(COLLECTION_NAME)
+                .collection<IncidentComment>(COLLECTION_NAMES.INCIDENT_COMMENTS)
                 .findOne({ _id: new ObjectId(id) });
 
             return comment ?? null;
@@ -174,7 +136,7 @@ export class IncidentCommentRepository {
         try {
             const db = mongoDb();
             const incident = await db
-                .collection<Incident>("incidents")
+                .collection<Incident>(COLLECTION_NAMES.INCIDENTS)
                 .findOne({ _id: new ObjectId(incidentId) });
 
             return incident ?? null;
@@ -188,7 +150,7 @@ export class IncidentCommentRepository {
             const db = mongoDb();
 
             const result = await db
-                .collection<IncidentComment>(COLLECTION_NAME)
+                .collection<IncidentComment>(COLLECTION_NAMES.INCIDENT_COMMENTS)
                 .insertOne(data as IncidentComment);
 
             const comments = await IncidentCommentRepository.getCommentsByIncidentId({
@@ -218,7 +180,7 @@ export class IncidentCommentRepository {
             const db = mongoDb();
 
             const result = await db
-                .collection<IncidentComment>(COLLECTION_NAME)
+                .collection<IncidentComment>(COLLECTION_NAMES.INCIDENT_COMMENTS)
                 .findOneAndUpdate(
                     { _id: new ObjectId(id) },
                     { $set: { ...data, updatedAt: new Date() } },
@@ -239,7 +201,7 @@ export class IncidentCommentRepository {
             const db = mongoDb();
 
             const result = await db
-                .collection<IncidentComment>(COLLECTION_NAME)
+                .collection<IncidentComment>(COLLECTION_NAMES.INCIDENT_COMMENTS)
                 .findOneAndUpdate(
                     { _id: new ObjectId(id) },
                     { $set: { status, updatedAt: new Date() } },

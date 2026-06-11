@@ -4,34 +4,13 @@ import { AuthService } from "./auth.services";
 import { UserRepository } from "../repositorys/user.repository";
 import { CloudinaryRepository } from "../repositorys/cloudinary.repository";
 import { DistrictRepository } from "../repositorys/district.repository";
-<<<<<<< HEAD
 import { ImageService } from "./image.service";
 import { ImageTypes } from "../data/types/image.types";
-=======
 import { AiService } from "./ia.service";
 import { IncidentReportRepository } from "../repositorys/incident-report.repository";
-
->>>>>>> 363ce7e (refactor: se agrego la funcionalidad de la ia al modulo incidentes)
-const VALID_PRIORITIES = ["low", "medium", "high"];
-const VALID_STATUSES = ["in_review", "open", "assigned", "in_progress", "resolved", "closed", "rejected"];
-const VALID_ASSIGNED_STATUSES = ["assigned", "in_progress", "resolved"];
-
-interface IncidentFilters {
-    status?: string;
-    priority?: string;
-    categoryId?: string;
-    assignedTo?: string;
-}
-
-type IncidentPriority = "low" | "medium" | "high";
-
-const USER_ROLES = {
-    SUPERADMIN: "superadmin",
-    ADMIN: "admin",
-    OPERATOR: "operator",
-    CITIZEN: "citizen"
-} as const;
-
+import { USER_ROLES } from "../data/types/global/const.global";
+import { IncidentPriority, IncidentFilters } from "../data/types/incident/incidents.type";
+import { VALID_STATUSES, VALID_PRIORITIES, VALID_ASSIGNED_STATUSES } from "../data/types/incident/incidents.const";
 
 function getReportBoost(reportsCount: number): number {
     if (reportsCount <= 1) return 0;
@@ -68,7 +47,7 @@ export class IncidentsService {
             throw new Error("El usuario autenticado no existe en la base de datos");
         }
 
-        if (authenticatedUser.role !== "citizen") {
+        if (authenticatedUser.role !== USER_ROLES.CITIZEN) {
             throw new Error("Solo los ciudadanos pueden crear incidentes");
         }
 
@@ -145,17 +124,6 @@ export class IncidentsService {
                 radius: 100,
             });
 
-<<<<<<< HEAD
-        const incidentId = new ObjectId();
-
-        if (image) {
-            const processedImage = await ImageService.processImage(image);
-            const publicId = ImageTypes.buildIncidentImageName(incidentId.toString());
-            const uploadedImage = await CloudinaryRepository.uploadProcessedImage(processedImage, publicId);
-            imageData = {
-                url: uploadedImage.secure_url,
-                publicId: uploadedImage.public_id
-=======
         const aiResult = await AiService.validateIncident({
             title,
             description,
@@ -165,57 +133,13 @@ export class IncidentsService {
         });
 
         if (aiResult.nextAction === "reject") {
-            const uploadedImage = await CloudinaryRepository.uploadImage(image);
-
-            /*const rejectedReport =
-                await RejectedIncidentReportsRepository.createRejectedIncidentReport({
-                    title,
-                    description,
-
-                    normalizedTitle: aiResult.normalizedTitle,
-                    normalizedDescription: aiResult.normalizedDescription,
-
-                    categoryId: new ObjectId(aiResult.categoryId),
-
-                    location: {
-                        type: "Point",
-                        coordinates: [lng, lat],
-                    },
-
-                    image: {
-                        url: uploadedImage.secure_url,
-                        publicId: uploadedImage.public_id,
-                    },
-
-                    municipalityId: new ObjectId(municipality),
-                    createdBy: new ObjectId(authenticatedUser.id),
-
-                    aiValidation: {
-                        confidence: aiResult.confidence,
-                        aiUrgencyScore: aiResult.aiUrgencyScore,
-
-                        imageMatchesText: aiResult.imageMatchesText,
-                        imageContainsIncident: aiResult.imageContainsIncident,
-                        possibleFakeOrIrrelevantImage:
-                            aiResult.possibleFakeOrIrrelevantImage,
-
-                        rejectionReason:
-                            aiResult.rejectionReason ?? "Reporte rechazado por la IA",
-                        reasons: aiResult.reasons,
-                    },
-
-                    createdAt: new Date(),
-                }); */
-
             return {
                 status: "rejected",
                 message: "El incidente fue rechazado por la IA",
                 data: {
-                    //rejectedReportId: rejectedReport._id,
                     rejectionReason: aiResult.rejectionReason,
                     reasons: aiResult.reasons,
                 },
->>>>>>> 363ce7e (refactor: se agrego la funcionalidad de la ia al modulo incidentes)
             };
         }
 
@@ -232,15 +156,23 @@ export class IncidentsService {
             };
         }
 
-        const uploadedImage = await CloudinaryRepository.uploadImage(image);
+        const incidentId = new ObjectId();
+
+        const processedImage = await ImageService.processImage(image);
+
+        const publicId = ImageTypes.buildIncidentImageName(
+            incidentId.toString()
+        );
+
+        const uploadedImage =
+            await CloudinaryRepository.uploadProcessedImage(
+                processedImage,
+                publicId
+            );
 
         const newIncident = {
-<<<<<<< HEAD
             _id: incidentId,
-            title: body.title.trim(),
-            description: body.description?.trim() || "",
-            category: "Incident",
-=======
+
             title: aiResult.normalizedTitle,
             description: aiResult.normalizedDescription,
 
@@ -249,7 +181,6 @@ export class IncidentsService {
 
             categoryId: new ObjectId(aiResult.categoryId),
 
->>>>>>> 363ce7e (refactor: se agrego la funcionalidad de la ia al modulo incidentes)
             status: "in_review",
 
             location: {
@@ -271,7 +202,8 @@ export class IncidentsService {
 
                 imageMatchesText: aiResult.imageMatchesText,
                 imageContainsIncident: aiResult.imageContainsIncident,
-                possibleFakeOrIrrelevantImage: aiResult.possibleFakeOrIrrelevantImage,
+                possibleFakeOrIrrelevantImage:
+                    aiResult.possibleFakeOrIrrelevantImage,
 
                 isPossibleDuplicate: aiResult.isPossibleDuplicate,
                 duplicateOfIncidentId: aiResult.duplicateOfIncidentId
@@ -297,7 +229,6 @@ export class IncidentsService {
         };
     }
 
-
     static async obtenerMisIncidentes(clerkUserId: string | null, status?: string) {
 
         if (!clerkUserId) {
@@ -306,7 +237,7 @@ export class IncidentsService {
 
         const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
 
-        if (authenticatedUser.role !== "citizen") {
+        if (authenticatedUser.role !== USER_ROLES.CITIZEN) {
             throw new Error("Solo los ciudadanos pueden consultar sus incidentes");
         }
 
@@ -322,7 +253,6 @@ export class IncidentsService {
 
     }
 
-
     static async obtenerAsignados(
         clerkUserId: string | null,
         filters: {
@@ -336,7 +266,7 @@ export class IncidentsService {
 
         const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
 
-        if (authenticatedUser.role !== "operator") {
+        if (authenticatedUser.role !== USER_ROLES.OPERATOR) {
             throw new Error("Solo los operadores pueden consultar incidentes asignados");
         }
 
@@ -364,7 +294,6 @@ export class IncidentsService {
         );
     }
 
-
     static async obtenerTodos(filters: IncidentFilters, clerkUserId: string | null) {
         if (!clerkUserId) {
             throw new Error("Usuario no autenticado");
@@ -372,7 +301,7 @@ export class IncidentsService {
 
         const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
 
-        if (!["admin", "operator", "superadmin"].includes(authenticatedUser.role)) {
+        if (![USER_ROLES.ADMIN, USER_ROLES.OPERATOR, USER_ROLES.SUPERADMIN].includes(authenticatedUser.role)) {
             throw new Error("No tenés permisos para obtener incidentes");
         }
 
@@ -398,7 +327,6 @@ export class IncidentsService {
 
         return await IncidentsRepository.obtenerTodos(filters, authenticatedUser.municipalityId);
     }
-
 
     static async getMap(clerkUserId: string | null, query: any) {
         if (!clerkUserId) {
@@ -452,7 +380,6 @@ export class IncidentsService {
         });
     }
 
-
     static async asignarOperador(
         clerkUserId: string | null,
         incidentId: string,
@@ -464,7 +391,7 @@ export class IncidentsService {
 
         const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
 
-        if (authenticatedUser.role !== "admin") {
+        if (authenticatedUser.role !== USER_ROLES.ADMIN) {
             throw new Error("Solo los administradores pueden asignar operadores");
         }
 
@@ -486,7 +413,7 @@ export class IncidentsService {
             throw new Error("El operador no existe");
         }
 
-        if (operator.role !== "operator") {
+        if (operator.role !== USER_ROLES.OPERATOR) {
             throw new Error("El usuario seleccionado no es operador");
         }
 
@@ -536,7 +463,6 @@ export class IncidentsService {
         );
     }
 
-
     static async actualizarEstado(
         clerkUserId: string | null,
         incidentId: string,
@@ -567,7 +493,7 @@ export class IncidentsService {
             throw new Error("El incidente no existe");
         }
 
-        if (authenticatedUser.role === "admin") {
+        if (authenticatedUser.role === USER_ROLES.ADMIN) {
             if (
                 !incident.municipalityId ||
                 incident.municipalityId.toString() !== authenticatedUser.municipalityId
@@ -576,7 +502,7 @@ export class IncidentsService {
             }
         }
 
-        if (authenticatedUser.role === "operator") {
+        if (authenticatedUser.role === USER_ROLES.OPERATOR) {
             if (
                 !incident.assignedTo ||
                 incident.assignedTo.toString() !== authenticatedUser.id
@@ -601,7 +527,7 @@ export class IncidentsService {
             }
         }
 
-        if (authenticatedUser.role === "citizen") {
+        if (authenticatedUser.role === USER_ROLES.CITIZEN) {
             const isOwner = incident.createdBy?.toString() === authenticatedUser.id;
 
             if (!isOwner) {
@@ -629,7 +555,6 @@ export class IncidentsService {
         );
     }
 
-
     static async actualizarPrioridad(
         clerkUserId: string | null,
         incidentId: string,
@@ -649,7 +574,7 @@ export class IncidentsService {
 
         const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
 
-        if (authenticatedUser.role !== "admin") {
+        if (authenticatedUser.role !== USER_ROLES.ADMIN) {
             throw new Error("Solo los administradores pueden cambiar prioridades");
         }
 
@@ -676,7 +601,6 @@ export class IncidentsService {
         );
     }
 
-
     static async resolverIncidente(
         clerkUserId: string | null,
         incidentId: string,
@@ -688,7 +612,7 @@ export class IncidentsService {
 
         const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
 
-        if (authenticatedUser.role !== "operator") {
+        if (authenticatedUser.role !== USER_ROLES.OPERATOR) {
             throw new Error("Solo los operadores pueden resolver incidentes");
         }
 
@@ -724,7 +648,6 @@ export class IncidentsService {
             body.resolutionPhotoUrl.trim(),
         );
     }
-
 
     static async getDetailById(clerkUserId: string | null, incidentId: string) {
         if (!clerkUserId) {
