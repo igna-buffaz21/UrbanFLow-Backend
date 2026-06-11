@@ -6,26 +6,37 @@ import { CloudinaryRepository } from "../repositorys/cloudinary.repository";
 import { DistrictRepository } from "../repositorys/district.repository";
 import { ImageService } from "./image.service";
 import { ImageTypes } from "../data/types/image.types";
-const VALID_PRIORITIES = ["low", "medium", "high"];
-const VALID_STATUSES = ["in_review", "open", "assigned", "in_progress", "resolved", "closed", "rejected"];
-const VALID_ASSIGNED_STATUSES = ["assigned", "in_progress", "resolved"];
+import { AiService } from "./ia.service";
+import { IncidentReportRepository } from "../repositorys/incident-report.repository";
+import { USER_ROLES } from "../data/types/global/const.global";
+import { IncidentPriority, IncidentFilters } from "../data/types/incident/incidents.type";
+import { VALID_STATUSES, VALID_PRIORITIES, VALID_ASSIGNED_STATUSES } from "../data/types/incident/incidents.const";
 
-interface IncidentFilters {
-    status?: string;
-    priority?: string;
-    categoryId?: string;
-    assignedTo?: string;
+function getReportBoost(reportsCount: number): number {
+    if (reportsCount <= 1) return 0;
+    if (reportsCount <= 4) return 1;
+    return 2;
 }
 
-const USER_ROLES = {
-    SUPERADMIN: "superadmin",
-    ADMIN: "admin",
-    OPERATOR: "operator",
-    CITIZEN: "citizen"
-} as const;
+function calculatePriorityScore(params: {
+    aiUrgencyScore: number;
+    reportsCount: number;
+}): number {
+    return params.aiUrgencyScore + getReportBoost(params.reportsCount);
+}
+
+function getPriorityFromScore(priorityScore: number): IncidentPriority {
+    if (priorityScore <= 2) return "low";
+    if (priorityScore <= 4) return "medium";
+    return "high";
+}
 
 export class IncidentsService {
-    static async createIncident(body: any, clerkUserId: string | null, image?: Express.Multer.File) {
+    static async createIncident(
+        body: any,
+        clerkUserId: string | null,
+        image?: Express.Multer.File
+    ) {
         if (!clerkUserId) {
             throw new Error("Usuario no autenticado");
         }
@@ -36,7 +47,7 @@ export class IncidentsService {
             throw new Error("El usuario autenticado no existe en la base de datos");
         }
 
-        if (authenticatedUser.role !== "citizen") {
+        if (authenticatedUser.role !== USER_ROLES.CITIZEN) {
             throw new Error("Solo los ciudadanos pueden crear incidentes");
         }
 
@@ -44,9 +55,19 @@ export class IncidentsService {
             throw new Error("El título es obligatorio");
         }
 
-        const location = typeof body.location === "string"
-            ? JSON.parse(body.location)
-            : body.location;
+        const title = body.title.trim();
+        const description = body.description?.trim() || "";
+
+        let location;
+
+        try {
+            location =
+                typeof body.location === "string"
+                    ? JSON.parse(body.location)
+                    : body.location;
+        } catch {
+            throw new Error("La ubicación tiene un formato inválido");
+        }
 
         if (!location) {
             throw new Error("La ubicación es obligatoria");
@@ -78,47 +99,135 @@ export class IncidentsService {
             throw new Error("La latitud es inválida");
         }
 
+        if (!image) {
+            throw new Error("La imagen es obligatoria para validar el incidente");
+        }
+
+        if (!image.mimetype) {
+            throw new Error("La imagen no tiene un formato válido");
+        }
+
+        if (!image.buffer) {
+            throw new Error("No se pudo procesar la imagen");
+        }
+
         const municipality = await DistrictRepository.findMunicipalityByPoint(lng, lat);
 
         if (!municipality) {
             throw new Error("No hay ningún municipio asociado a esta ubicación");
         }
 
-        let imageData = null;
+        const nearbyIncidents =
+            await IncidentsRepository.findNearbyForAiDuplicateCheck({
+                lng,
+                lat,
+                radius: 100,
+            });
 
-        const incidentId = new ObjectId();
+        const aiResult = await AiService.validateIncident({
+            title,
+            description,
+            mimeType: image.mimetype,
+            imageBase64: image.buffer.toString("base64"),
+            nearbyIncidents,
+        });
 
-        if (image) {
-            const processedImage = await ImageService.processImage(image);
-            const publicId = ImageTypes.buildIncidentImageName(incidentId.toString());
-            const uploadedImage = await CloudinaryRepository.uploadProcessedImage(processedImage, publicId);
-            imageData = {
-                url: uploadedImage.secure_url,
-                publicId: uploadedImage.public_id
+        if (aiResult.nextAction === "reject") {
+            return {
+                status: "rejected",
+                message: "El incidente fue rechazado por la IA",
+                data: {
+                    rejectionReason: aiResult.rejectionReason,
+                    reasons: aiResult.reasons,
+                },
             };
         }
 
+        if (aiResult.nextAction === "ask_user_duplicate_confirmation") {
+            return {
+                status: "possible_duplicate",
+                message: "El incidente podría ser un duplicado",
+                data: {
+                    duplicateOfIncidentId: aiResult.duplicateOfIncidentId,
+                    duplicateConfidence: aiResult.duplicateConfidence,
+                    duplicateReason: aiResult.duplicateReason,
+                    aiResult,
+                },
+            };
+        }
+
+        const incidentId = new ObjectId();
+
+        const processedImage = await ImageService.processImage(image);
+
+        const publicId = ImageTypes.buildIncidentImageName(
+            incidentId.toString()
+        );
+
+        const uploadedImage =
+            await CloudinaryRepository.uploadProcessedImage(
+                processedImage,
+                publicId
+            );
+
         const newIncident = {
             _id: incidentId,
-            title: body.title.trim(),
-            description: body.description?.trim() || "",
-            category: "Incident",
+
+            title: aiResult.normalizedTitle,
+            description: aiResult.normalizedDescription,
+
+            originalTitle: title,
+            originalDescription: description,
+
+            categoryId: new ObjectId(aiResult.categoryId),
+
             status: "in_review",
-            priority: "low",
+
             location: {
                 type: "Point",
-                coordinates: [lng, lat]
+                coordinates: [lng, lat],
             },
-            image: imageData,
+
+            image: {
+                url: uploadedImage.secure_url,
+                publicId: uploadedImage.public_id,
+            },
+
             municipalityId: new ObjectId(municipality),
             createdBy: new ObjectId(authenticatedUser.id),
+
+            aiValidation: {
+                confidence: aiResult.confidence,
+                aiUrgencyScore: aiResult.aiUrgencyScore,
+
+                imageMatchesText: aiResult.imageMatchesText,
+                imageContainsIncident: aiResult.imageContainsIncident,
+                possibleFakeOrIrrelevantImage:
+                    aiResult.possibleFakeOrIrrelevantImage,
+
+                isPossibleDuplicate: aiResult.isPossibleDuplicate,
+                duplicateOfIncidentId: aiResult.duplicateOfIncidentId
+                    ? new ObjectId(aiResult.duplicateOfIncidentId)
+                    : null,
+                duplicateConfidence: aiResult.duplicateConfidence,
+                duplicateReason: aiResult.duplicateReason,
+
+                rejectionReason: aiResult.rejectionReason,
+                reasons: aiResult.reasons,
+            },
+
             createdAt: new Date(),
-            updatedAt: new Date()
+            updatedAt: new Date(),
         };
 
-        return await IncidentsRepository.createIncident(newIncident);
-    }
+        const incident = await IncidentsRepository.createIncident(newIncident);
 
+        return {
+            status: "created",
+            message: "Incidente creado correctamente",
+            data: incident,
+        };
+    }
 
     static async obtenerMisIncidentes(clerkUserId: string | null, status?: string) {
 
@@ -128,7 +237,7 @@ export class IncidentsService {
 
         const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
 
-        if (authenticatedUser.role !== "citizen") {
+        if (authenticatedUser.role !== USER_ROLES.CITIZEN) {
             throw new Error("Solo los ciudadanos pueden consultar sus incidentes");
         }
 
@@ -144,7 +253,6 @@ export class IncidentsService {
 
     }
 
-
     static async obtenerAsignados(
         clerkUserId: string | null,
         filters: {
@@ -158,7 +266,7 @@ export class IncidentsService {
 
         const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
 
-        if (authenticatedUser.role !== "operator") {
+        if (authenticatedUser.role !== USER_ROLES.OPERATOR) {
             throw new Error("Solo los operadores pueden consultar incidentes asignados");
         }
 
@@ -186,7 +294,6 @@ export class IncidentsService {
         );
     }
 
-
     static async obtenerTodos(filters: IncidentFilters, clerkUserId: string | null) {
         if (!clerkUserId) {
             throw new Error("Usuario no autenticado");
@@ -194,7 +301,7 @@ export class IncidentsService {
 
         const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
 
-        if (!["admin", "operator", "superadmin"].includes(authenticatedUser.role)) {
+        if (![USER_ROLES.ADMIN, USER_ROLES.OPERATOR, USER_ROLES.SUPERADMIN].includes(authenticatedUser.role)) {
             throw new Error("No tenés permisos para obtener incidentes");
         }
 
@@ -220,7 +327,6 @@ export class IncidentsService {
 
         return await IncidentsRepository.obtenerTodos(filters, authenticatedUser.municipalityId);
     }
-
 
     static async getMap(clerkUserId: string | null, query: any) {
         if (!clerkUserId) {
@@ -274,7 +380,6 @@ export class IncidentsService {
         });
     }
 
-
     static async asignarOperador(
         clerkUserId: string | null,
         incidentId: string,
@@ -286,7 +391,7 @@ export class IncidentsService {
 
         const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
 
-        if (authenticatedUser.role !== "admin") {
+        if (authenticatedUser.role !== USER_ROLES.ADMIN) {
             throw new Error("Solo los administradores pueden asignar operadores");
         }
 
@@ -308,7 +413,7 @@ export class IncidentsService {
             throw new Error("El operador no existe");
         }
 
-        if (operator.role !== "operator") {
+        if (operator.role !== USER_ROLES.OPERATOR) {
             throw new Error("El usuario seleccionado no es operador");
         }
 
@@ -358,7 +463,6 @@ export class IncidentsService {
         );
     }
 
-
     static async actualizarEstado(
         clerkUserId: string | null,
         incidentId: string,
@@ -389,7 +493,7 @@ export class IncidentsService {
             throw new Error("El incidente no existe");
         }
 
-        if (authenticatedUser.role === "admin") {
+        if (authenticatedUser.role === USER_ROLES.ADMIN) {
             if (
                 !incident.municipalityId ||
                 incident.municipalityId.toString() !== authenticatedUser.municipalityId
@@ -398,7 +502,7 @@ export class IncidentsService {
             }
         }
 
-        if (authenticatedUser.role === "operator") {
+        if (authenticatedUser.role === USER_ROLES.OPERATOR) {
             if (
                 !incident.assignedTo ||
                 incident.assignedTo.toString() !== authenticatedUser.id
@@ -423,7 +527,7 @@ export class IncidentsService {
             }
         }
 
-        if (authenticatedUser.role === "citizen") {
+        if (authenticatedUser.role === USER_ROLES.CITIZEN) {
             const isOwner = incident.createdBy?.toString() === authenticatedUser.id;
 
             if (!isOwner) {
@@ -451,7 +555,6 @@ export class IncidentsService {
         );
     }
 
-
     static async actualizarPrioridad(
         clerkUserId: string | null,
         incidentId: string,
@@ -471,7 +574,7 @@ export class IncidentsService {
 
         const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
 
-        if (authenticatedUser.role !== "admin") {
+        if (authenticatedUser.role !== USER_ROLES.ADMIN) {
             throw new Error("Solo los administradores pueden cambiar prioridades");
         }
 
@@ -498,7 +601,6 @@ export class IncidentsService {
         );
     }
 
-
     static async resolverIncidente(
         clerkUserId: string | null,
         incidentId: string,
@@ -510,7 +612,7 @@ export class IncidentsService {
 
         const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
 
-        if (authenticatedUser.role !== "operator") {
+        if (authenticatedUser.role !== USER_ROLES.OPERATOR) {
             throw new Error("Solo los operadores pueden resolver incidentes");
         }
 
@@ -547,7 +649,6 @@ export class IncidentsService {
         );
     }
 
-
     static async getDetailById(clerkUserId: string | null, incidentId: string) {
         if (!clerkUserId) {
             throw new Error("Usuario no autenticado");
@@ -563,18 +664,44 @@ export class IncidentsService {
             throw new Error("Usuario no encontrado");
         }
 
-        if (authenticatedUser.role !== USER_ROLES.CITIZEN && authenticatedUser.role !== USER_ROLES.ADMIN && authenticatedUser.role !== USER_ROLES.OPERATOR) {
+        if (
+            authenticatedUser.role !== USER_ROLES.CITIZEN &&
+            authenticatedUser.role !== USER_ROLES.ADMIN &&
+            authenticatedUser.role !== USER_ROLES.OPERATOR
+        ) {
             throw new Error("Solo los ciudadanos y administradores pueden ver el detalle de un incidente");
         }
 
         const incidentObjectId = new ObjectId(incidentId);
 
-        const incident = await IncidentsRepository.getDetailById(incidentObjectId, clerkUserId);
+        const incident = await IncidentsRepository.getDetailById(
+            incidentObjectId,
+            clerkUserId
+        );
 
         if (!incident) {
             throw new Error("El incidente no existe");
         }
 
-        return incident;
+        const reportsCount = await IncidentReportRepository.countReportsByIncidentId(
+            incidentId
+        );
+
+        const aiUrgencyScore = incident.aiUrgencyScore ?? 1;
+
+        const priorityScore = calculatePriorityScore({
+            aiUrgencyScore,
+            reportsCount,
+        });
+
+        const priority = getPriorityFromScore(priorityScore);
+
+        return {
+            ...incident,
+            reportsCount,
+            aiUrgencyScore,
+            priorityScore,
+            priority,
+        };
     }
 }

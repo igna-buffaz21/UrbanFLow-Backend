@@ -1,22 +1,8 @@
 import { ObjectId } from "mongodb";
 import { Category } from "../data/category.model";
 import { mongoDb } from "../config/mongodb.config";
-
-const COLLECTION_NAME = "categories";
-
-interface CategoryListResponse {
-    id: string;
-    name: string;
-}
-
-interface CategoryDetailResponse {
-    id: string;
-    name: string;
-    description?: string;
-    iconUrl?: string;
-    createdAt: Date;
-    updatedAt: Date;
-}
+import { COLLECTION_NAMES } from "../data/types/global/const.global";
+import { CategoryListResponse, CategoryDetailResponse } from "../data/types/category/category.types";
 
 export class CategoryRepository {
 
@@ -25,7 +11,7 @@ export class CategoryRepository {
             const db = mongoDb();
 
             const categories = await db
-                .collection<Category>(COLLECTION_NAME)
+                .collection<Category>(COLLECTION_NAMES.CATEGORIES)
                 .aggregate([
                     {
                         $project: {
@@ -48,7 +34,7 @@ export class CategoryRepository {
             const db = mongoDb();
 
             const result = await db
-                .collection<Category>(COLLECTION_NAME)
+                .collection<Category>(COLLECTION_NAMES.CATEGORIES)
                 .aggregate([
                     { $match: { _id: new ObjectId(id) } },
                     {
@@ -71,12 +57,11 @@ export class CategoryRepository {
         }
     }
 
-    // NUEVO: para verificar duplicados antes de crear
     static async getCategoryByName(name: string): Promise<Category | null> {
         try {
             const db = mongoDb();
             return await db
-                .collection<Category>(COLLECTION_NAME)
+                .collection<Category>(COLLECTION_NAMES.CATEGORIES)
                 .findOne({ name });
         } catch (err) {
             throw new Error(`Error al buscar la categoría por nombre: ${err}`);
@@ -90,7 +75,7 @@ export class CategoryRepository {
             const db = mongoDb();
 
             const result = await db
-                .collection<Category>(COLLECTION_NAME)
+                .collection<Category>(COLLECTION_NAMES.CATEGORIES)
                 .insertOne(data as Category);
 
             const created = await CategoryRepository.getCategoryById(

@@ -58,7 +58,7 @@ export class AiController {
 
       const imageBase64 = req.file.buffer.toString("base64");
 
-      const result = await AiService.validateIncident({
+      const result = await AiService.validateIncidentDEV({
         title,
         description,
         lng: parsedLng,
