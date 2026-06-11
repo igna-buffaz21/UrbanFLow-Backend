@@ -53,9 +53,9 @@ export type IncidentDetailResponse = {
 };
 
 type FindNearbyForAiParams = {
-  lng: number;
-  lat: number;
-  radius: number;
+    lng: number;
+    lat: number;
+    radius: number;
 };
 
 
@@ -216,17 +216,42 @@ export class IncidentsRepository {
             if (filters.assignedTo) query.assignedTo = new ObjectId(filters.assignedTo);
 
             const incidents = await db.collection("incidents")
-                .find(query)
-                .project({
-                    title: 1,
-                    status: 1,
-                    priority: 1,
-                    assignedTo: 1,
-                    createdAt: 1,
-                    assignedAt: 1,
-                    resolvedAt: 1,
-                    resolutionTime: 1,
-                })
+                .aggregate([
+                    {
+                        $match: query
+                    },
+                    {
+                        $lookup: {
+                            from: "users",
+                            localField: "assignedTo",
+                            foreignField: "_id",
+                            as: "assignedOperator"
+                        }
+                    },
+                    {
+                        $unwind: {
+                            path: "$assignedOperator",
+                            preserveNullAndEmptyArrays: true
+                        }
+                    },
+                    {
+                        $project: {
+                            title: 1,
+                            status: 1,
+                            priority: 1,
+                            createdAt: 1,
+                            assignedAt: 1,
+                            resolvedAt: 1,
+                            closedAt: 1,
+                            resolutionTime: 1,
+                            assignedTo: {
+                                id: "$assignedOperator._id",
+                                name: "$assignedOperator.name",
+                                photoUrl: "$assignedOperator.photoUrl"
+                            }
+                        }
+                    }
+                ])
                 .toArray();
 
             return incidents.map((incident: any) => ({
@@ -234,11 +259,18 @@ export class IncidentsRepository {
                 title: incident.title,
                 status: incident.status,
                 priority: incident.priority,
-                assignedTo: incident.assignedTo,
                 createdAt: incident.createdAt,
                 assignedAt: incident.assignedAt,
                 resolvedAt: incident.resolvedAt,
+                closedAt: incident.closedAt,
                 resolutionTime: incident.resolutionTime,
+                assignedTo: incident.assignedTo?.id
+                    ? {
+                        id: incident.assignedTo.id.toString(),
+                        name: incident.assignedTo.name,
+                        photoUrl: incident.assignedTo.photoUrl || null
+                    }
+                    : null
             }));
         } catch (err) {
             throw new Error("Error al obtener los incidentes: " + err);
@@ -561,56 +593,56 @@ export class IncidentsRepository {
 
     static async findNearbyForAiDuplicateCheck(params: FindNearbyForAiParams) {
         try {
-        const db = mongoDb();
+            const db = mongoDb();
 
-        const result = await db
-            .collection("incidents")
-            .aggregate([
-            {
-                $geoNear: {
-                near: {
-                    type: "Point",
-                    coordinates: [params.lng, params.lat],
-                },
-                distanceField: "distanceMeters",
-                maxDistance: params.radius,
-                spherical: true,
-                query: {
-                    //municipalityId: new ObjectId(params.municipalityId),
-                    status: {
-                    $in: ["in_review", "open", "assigned", "in_progress"],
+            const result = await db
+                .collection("incidents")
+                .aggregate([
+                    {
+                        $geoNear: {
+                            near: {
+                                type: "Point",
+                                coordinates: [params.lng, params.lat],
+                            },
+                            distanceField: "distanceMeters",
+                            maxDistance: params.radius,
+                            spherical: true,
+                            query: {
+                                //municipalityId: new ObjectId(params.municipalityId),
+                                status: {
+                                    $in: ["in_review", "open", "assigned", "in_progress"],
+                                },
+                            },
+                        },
                     },
-                },
-                },
-            },
-            {
-                $project: {
-                _id: 0,
-                id: { $toString: "$_id" },
-                title: 1,
-                description: 1,
-                categoryName: 1,
-                status: 1,
-                createdAt: 1,
-                distanceMeters: {
-                    $round: ["$distanceMeters", 0],
-                },
-                },
-            },
-            {
-                $sort: {
-                distanceMeters: 1,
-                },
-            },
-            {
-                $limit: 10,
-            },
-            ])
-            .toArray();
+                    {
+                        $project: {
+                            _id: 0,
+                            id: { $toString: "$_id" },
+                            title: 1,
+                            description: 1,
+                            categoryName: 1,
+                            status: 1,
+                            createdAt: 1,
+                            distanceMeters: {
+                                $round: ["$distanceMeters", 0],
+                            },
+                        },
+                    },
+                    {
+                        $sort: {
+                            distanceMeters: 1,
+                        },
+                    },
+                    {
+                        $limit: 10,
+                    },
+                ])
+                .toArray();
 
-        return result as NearbyIncidentForAi[];
+            return result as NearbyIncidentForAi[];
         } catch (err) {
-        throw new Error(`Error al obtener incidentes cercanos para IA: ${err}`);
+            throw new Error(`Error al obtener incidentes cercanos para IA: ${err}`);
         }
-  }
+    }
 }
