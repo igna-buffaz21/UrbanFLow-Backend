@@ -4,6 +4,13 @@ import { NearbyIncidentForAi } from "../data/types/ia/ia.type";
 import { IncidentDetailResponse, GetMapParams, IncidentFilters, FindNearbyForAiParams } from "../data/types/incident/incidents.type";
 import { COLLECTION_NAMES } from "../data/types/global/const.global";
 
+type UserRole = "superadmin" | "admin" | "operator" | "citizen";
+
+export type GeoJSONPoint = {
+    type: "Point";
+    coordinates: [number, number]; // [lng, lat]
+};
+
 export class IncidentsRepository {
     static async createIncident(incident: object) {
         try {
@@ -161,18 +168,43 @@ export class IncidentsRepository {
             if (filters.assignedTo) query.assignedTo = new ObjectId(filters.assignedTo);
 
             const incidents = await db.collection(COLLECTION_NAMES.INCIDENTS)
-                .find(query)
-                .project({
-                    title: 1,
-                    status: 1,
-                    priority: 1,
-                    assignedTo: 1,
-                    createdAt: 1,
-                    assignedAt: 1,
-                    resolvedAt: 1,
-                    resolutionTime: 1,
-                    location: 1,
-                })
+                .aggregate([
+                    {
+                        $match: query
+                    },
+                    {
+                        $lookup: {
+                            from: COLLECTION_NAMES.USERS,
+                            localField: "assignedTo",
+                            foreignField: "_id",
+                            as: "assignedOperator"
+                        }
+                    },
+                    {
+                        $unwind: {
+                            path: "$assignedOperator",
+                            preserveNullAndEmptyArrays: true
+                        }
+                    },
+                    {
+                        $project: {
+                            title: 1,
+                            status: 1,
+                            priority: 1,
+                            createdAt: 1,
+                            assignedAt: 1,
+                            resolvedAt: 1,
+                            closedAt: 1,
+                            resolutionTime: 1,
+                            location: 1,
+                            assignedTo: {
+                                id: "$assignedOperator._id",
+                                name: "$assignedOperator.name",
+                                photoUrl: "$assignedOperator.photoUrl"
+                            }
+                        }
+                    }
+                ])
                 .toArray();
 
             console.log(
@@ -187,11 +219,18 @@ export class IncidentsRepository {
                 title: incident.title,
                 status: incident.status,
                 priority: incident.priority,
-                assignedTo: incident.assignedTo,
                 createdAt: incident.createdAt,
                 assignedAt: incident.assignedAt,
                 resolvedAt: incident.resolvedAt,
+                closedAt: incident.closedAt,
                 resolutionTime: incident.resolutionTime,
+                assignedTo: incident.assignedTo?.id
+                    ? {
+                        id: incident.assignedTo.id.toString(),
+                        name: incident.assignedTo.name,
+                        photoUrl: incident.assignedTo.photoUrl || null
+                    }
+                    : null,
                 location: incident.location ?? null,
             }));
         } catch (err) {
