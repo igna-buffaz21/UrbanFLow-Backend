@@ -21,7 +21,6 @@ export class IncidentsController {
         }
     }
 
-
     static async obtenerMisIncidentes(req: Request, res: Response, next: NextFunction) {
         try {
             const { userId } = getAuth(req);
@@ -35,7 +34,6 @@ export class IncidentsController {
             next(err);
         }
     }
-
 
     static async obtenerAsignados(req: Request, res: Response, next: NextFunction) {
         try {
@@ -53,7 +51,6 @@ export class IncidentsController {
             next(err);
         }
     }
-
 
     static async obtenerTodos(req: Request, res: Response, next: NextFunction) {
         try {
@@ -74,7 +71,6 @@ export class IncidentsController {
         }
     }
 
-
     static async getMap(req: Request, res: Response, next: NextFunction) {
         try {
             const clerkUserId = getAuth(req).userId || null;
@@ -89,7 +85,6 @@ export class IncidentsController {
             next(err);
         }
     }
-
 
     static async asignarOperador(req: Request, res: Response, next: NextFunction) {
         try {
@@ -109,7 +104,6 @@ export class IncidentsController {
             next(err);
         }
     }
-
 
     static async actualizarEstado(req: Request, res: Response, next: NextFunction) {
         try {
@@ -131,7 +125,6 @@ export class IncidentsController {
         }
     }
 
-
     static async actualizarPrioridad(req: Request, res: Response, next: NextFunction) {
         try {
             const { userId } = getAuth(req);
@@ -151,7 +144,6 @@ export class IncidentsController {
         }
     }
 
-
     static async resolverIncidente(req: Request, res: Response, next: NextFunction) {
         try {
             const { userId } = getAuth(req);
@@ -170,7 +162,6 @@ export class IncidentsController {
         }
     }
 
-
     static async getDetailById(req: Request, res: Response, next: NextFunction) {
         try {
             const { userId } = getAuth(req);
@@ -182,6 +173,32 @@ export class IncidentsController {
             res.json(incident);
         } catch (err) {
             next(err);
+        }
+    }
+
+    static async resolvePendingIncidentDuplicate(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ) {
+        try {
+            const { pendingIncidentId } = req.params;
+            const { action } = req.body;
+            const { userId } = getAuth(req);
+
+            console.log("pendingIncidentId:", req.params.pendingIncidentId);
+            console.log("action:", req.body.action);
+            console.log("auth:", userId);
+
+            const result = await IncidentsService.resolvePendingIncidentDuplicate(
+                pendingIncidentId,
+                userId,
+                action
+            );
+
+            res.status(200).json(result);
+        } catch (error) {
+            next(error);
         }
     }
 }

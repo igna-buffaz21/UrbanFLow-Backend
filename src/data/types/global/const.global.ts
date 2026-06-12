@@ -14,4 +14,5 @@ export const COLLECTION_NAMES = {
     INCIDENT_REPORTS: "incident_reports",
     INCIDENT_COMMENTS: "incident_comments",
     INCIDENT_AI_REVIEWS: "incident_ai_reviews",
+    PENDING_INCIDENTS: "pending_incidents",
 }

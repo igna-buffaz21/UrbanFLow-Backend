@@ -1,3 +1,5 @@
+import { UserRole } from "../../user.model";
+
 export type IncidentPriority = "low" | "medium" | "high";
 
 export interface IncidentFilters {
@@ -60,4 +62,20 @@ export type FindNearbyForAiParams = {
     lng: number;
     lat: number;
     radius: number;
+};
+
+export type ValidatedCreateIncidentInput = {
+    authenticatedUser: {
+        id: string;
+        role: UserRole;
+    };
+    title: string;
+    description: string;
+    location: {
+        type: "Point";
+        coordinates: [number, number];
+    };
+    lng: number;
+    lat: number;
+    image: Express.Multer.File;
 };

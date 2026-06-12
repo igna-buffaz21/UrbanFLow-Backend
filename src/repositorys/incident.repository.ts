@@ -3,8 +3,7 @@ import { mongoDb } from "../config/mongodb.config";
 import { NearbyIncidentForAi } from "../data/types/ia/ia.type";
 import { IncidentDetailResponse, GetMapParams, IncidentFilters, FindNearbyForAiParams } from "../data/types/incident/incidents.type";
 import { COLLECTION_NAMES } from "../data/types/global/const.global";
-
-type UserRole = "superadmin" | "admin" | "operator" | "citizen";
+import { INCIDENT_STATUS } from "../data/incident.model";
 
 export type GeoJSONPoint = {
     type: "Point";
@@ -37,15 +36,22 @@ export class IncidentsRepository {
                         $geoNear: {
                             near: {
                                 type: "Point",
-                                coordinates: [params.lng, params.lat]
+                                coordinates: [params.lng, params.lat],
                             },
                             distanceField: "distance",
                             maxDistance: params.radius,
                             spherical: true,
-                            /*query: {
-                                municipalityId: new ObjectId(params.municipalityId)
-                            }*/
-                        }
+                            query: {
+                                status: {
+                                    $in: [
+                                        INCIDENT_STATUS.OPEN,
+                                        INCIDENT_STATUS.ASSIGNED,
+                                        INCIDENT_STATUS.RESOLVED,
+                                        INCIDENT_STATUS.IN_PROGRESS,
+                                    ],
+                                },
+                            },
+                        },
                     },
                     {
                         $project: {
@@ -55,14 +61,14 @@ export class IncidentsRepository {
                             status: 1,
                             priority: 1,
                             location: 1,
-                            distance: 1
-                        }
+                            distance: 1,
+                        },
                     },
                     {
                         $sort: {
-                            distance: 1
-                        }
-                    }
+                            distance: 1,
+                        },
+                    },
                 ])
                 .toArray();
 
@@ -591,7 +597,7 @@ export class IncidentsRepository {
                             query: {
                                 //municipalityId: new ObjectId(params.municipalityId),
                                 status: {
-                                    $in: ["in_review", "open", "assigned", "in_progress"],
+                                    $in: ["in_review", "open", "assigned", "in_progress", "resolved"],
                                 },
                             },
                         },
