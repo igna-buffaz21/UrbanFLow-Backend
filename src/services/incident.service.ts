@@ -9,8 +9,10 @@ import { ImageTypes } from "../data/types/image.types";
 import { AiService } from "./ia.service";
 import { IncidentReportRepository } from "../repositorys/incident-report.repository";
 import { USER_ROLES } from "../data/types/global/const.global";
-import { IncidentPriority, IncidentFilters } from "../data/types/incident/incidents.type";
+import { IncidentPriority, IncidentFilters, ValidatedCreateIncidentInput } from "../data/types/incident/incidents.type";
 import { VALID_STATUSES, VALID_PRIORITIES, VALID_ASSIGNED_STATUSES } from "../data/types/incident/incidents.const";
+import { PendingIncidentRepository } from "../repositorys/pending-incident.repository";
+import { PendingIncident } from "../data/pending-incident.model";
 
 function getReportBoost(reportsCount: number): number {
     if (reportsCount <= 1) return 0;
@@ -37,79 +39,15 @@ export class IncidentsService {
         clerkUserId: string | null,
         image?: Express.Multer.File
     ) {
-        if (!clerkUserId) {
-            throw new Error("Usuario no autenticado");
-        }
-
-        const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
-
-        if (!authenticatedUser || !authenticatedUser.id) {
-            throw new Error("El usuario autenticado no existe en la base de datos");
-        }
-
-        if (authenticatedUser.role !== USER_ROLES.CITIZEN) {
-            throw new Error("Solo los ciudadanos pueden crear incidentes");
-        }
-
-        if (!body.title || body.title.trim() === "") {
-            throw new Error("El título es obligatorio");
-        }
-
-        const title = body.title.trim();
-        const description = body.description?.trim() || "";
-
-        let location;
-
-        try {
-            location =
-                typeof body.location === "string"
-                    ? JSON.parse(body.location)
-                    : body.location;
-        } catch {
-            throw new Error("La ubicación tiene un formato inválido");
-        }
-
-        if (!location) {
-            throw new Error("La ubicación es obligatoria");
-        }
-
-        if (location.type !== "Point") {
-            throw new Error("La ubicación debe ser de tipo Point");
-        }
-
-        if (!Array.isArray(location.coordinates)) {
-            throw new Error("Las coordenadas son obligatorias");
-        }
-
-        if (location.coordinates.length !== 2) {
-            throw new Error("Las coordenadas deben tener longitud y latitud");
-        }
-
-        const [lng, lat] = location.coordinates;
-
-        if (typeof lng !== "number" || typeof lat !== "number") {
-            throw new Error("Las coordenadas deben ser numéricas");
-        }
-
-        if (lng < -180 || lng > 180) {
-            throw new Error("La longitud es inválida");
-        }
-
-        if (lat < -90 || lat > 90) {
-            throw new Error("La latitud es inválida");
-        }
-
-        if (!image) {
-            throw new Error("La imagen es obligatoria para validar el incidente");
-        }
-
-        if (!image.mimetype) {
-            throw new Error("La imagen no tiene un formato válido");
-        }
-
-        if (!image.buffer) {
-            throw new Error("No se pudo procesar la imagen");
-        }
+        const {
+            authenticatedUser,
+            title,
+            description,
+            location,
+            lng,
+            lat,
+            image: validatedImage,
+        } = await this.validateCreateIncidentInput(body, clerkUserId, image);
 
         const municipality = await DistrictRepository.findMunicipalityByPoint(lng, lat);
 
@@ -127,8 +65,8 @@ export class IncidentsService {
         const aiResult = await AiService.validateIncident({
             title,
             description,
-            mimeType: image.mimetype,
-            imageBase64: image.buffer.toString("base64"),
+            mimeType: validatedImage.mimetype,
+            imageBase64: validatedImage.buffer.toString("base64"),
             nearbyIncidents,
         });
 
@@ -144,21 +82,82 @@ export class IncidentsService {
         }
 
         if (aiResult.nextAction === "ask_user_duplicate_confirmation") {
+            if (!aiResult.duplicateOfIncidentId) {
+                throw new Error(
+                    "La IA detectó un duplicado pero no devolvió el ID del incidente"
+                );
+            }
+
+            const pendingIncidentId = new ObjectId();
+
+            const processedImage = await ImageService.processImage(validatedImage);
+
+            const publicId = ImageTypes.buildPendingIncidentImageName(
+                pendingIncidentId.toString()
+            );
+
+            const uploadedImage =
+                await CloudinaryRepository.uploadProcessedImage(
+                    processedImage,
+                    publicId
+                );
+
+            const now = new Date();
+
+            const pendingIncident: PendingIncident = {
+                _id: pendingIncidentId,
+
+                title: aiResult.normalizedTitle,
+                description: aiResult.normalizedDescription,
+
+                originalTitle: title,
+                originalDescription: description,
+
+                categoryId: new ObjectId(aiResult.categoryId),
+
+                location,
+
+                image: {
+                    url: uploadedImage.secure_url,
+                    publicId: uploadedImage.public_id,
+                },
+
+                municipalityId: new ObjectId(municipality),
+
+                aiValidation: this.buildAiValidation(aiResult),
+
+                duplicateCandidate: {
+                    incidentId: new ObjectId(aiResult.duplicateOfIncidentId),
+                    confidence: aiResult.duplicateConfidence,
+                    reason: aiResult.duplicateReason,
+                },
+
+                createdBy: new ObjectId(authenticatedUser.id),
+
+                createdAt: now,
+                expiredAt: new Date(Date.now() + 1000 * 60 * 30),
+
+                status: "waiting_duplicate_confirmation",
+            };
+
+            const createdPendingIncident =
+                await PendingIncidentRepository.createPendingIncident(pendingIncident);
+
             return {
                 status: "possible_duplicate",
                 message: "El incidente podría ser un duplicado",
                 data: {
+                    pendingIncidentId: createdPendingIncident._id.toString(),
                     duplicateOfIncidentId: aiResult.duplicateOfIncidentId,
                     duplicateConfidence: aiResult.duplicateConfidence,
                     duplicateReason: aiResult.duplicateReason,
-                    aiResult,
                 },
             };
         }
 
         const incidentId = new ObjectId();
 
-        const processedImage = await ImageService.processImage(image);
+        const processedImage = await ImageService.processImage(validatedImage);
 
         const publicId = ImageTypes.buildIncidentImageName(
             incidentId.toString()
@@ -181,12 +180,9 @@ export class IncidentsService {
 
             categoryId: new ObjectId(aiResult.categoryId),
 
-            status: "in_review",
+            status: "open",
 
-            location: {
-                type: "Point",
-                coordinates: [lng, lat],
-            },
+            location,
 
             image: {
                 url: uploadedImage.secure_url,
@@ -196,25 +192,7 @@ export class IncidentsService {
             municipalityId: new ObjectId(municipality),
             createdBy: new ObjectId(authenticatedUser.id),
 
-            aiValidation: {
-                confidence: aiResult.confidence,
-                aiUrgencyScore: aiResult.aiUrgencyScore,
-
-                imageMatchesText: aiResult.imageMatchesText,
-                imageContainsIncident: aiResult.imageContainsIncident,
-                possibleFakeOrIrrelevantImage:
-                    aiResult.possibleFakeOrIrrelevantImage,
-
-                isPossibleDuplicate: aiResult.isPossibleDuplicate,
-                duplicateOfIncidentId: aiResult.duplicateOfIncidentId
-                    ? new ObjectId(aiResult.duplicateOfIncidentId)
-                    : null,
-                duplicateConfidence: aiResult.duplicateConfidence,
-                duplicateReason: aiResult.duplicateReason,
-
-                rejectionReason: aiResult.rejectionReason,
-                reasons: aiResult.reasons,
-            },
+            aiValidation: this.buildAiValidation(aiResult),
 
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -703,5 +681,301 @@ export class IncidentsService {
             priorityScore,
             priority,
         };
+    }
+
+    private static buildAiValidation(aiResult: any) {
+    return {
+        confidence: aiResult.confidence,
+        aiUrgencyScore: aiResult.aiUrgencyScore,
+
+        imageMatchesText: aiResult.imageMatchesText,
+        imageContainsIncident: aiResult.imageContainsIncident,
+        possibleFakeOrIrrelevantImage: aiResult.possibleFakeOrIrrelevantImage,
+
+        isPossibleDuplicate: aiResult.isPossibleDuplicate,
+        duplicateOfIncidentId: aiResult.duplicateOfIncidentId
+            ? new ObjectId(aiResult.duplicateOfIncidentId)
+            : null,
+        duplicateConfidence: aiResult.duplicateConfidence,
+        duplicateReason: aiResult.duplicateReason,
+
+        rejectionReason: aiResult.rejectionReason,
+        reasons: aiResult.reasons,
+    };
+    }
+
+    private static async validateCreateIncidentInput(
+        body: any,
+        clerkUserId: string | null,
+        image?: Express.Multer.File
+    ): Promise<ValidatedCreateIncidentInput> {
+        if (!clerkUserId) {
+            throw new Error("Usuario no autenticado");
+        }
+
+        const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
+
+        if (!authenticatedUser || !authenticatedUser.id) {
+            throw new Error("El usuario autenticado no existe en la base de datos");
+        }
+
+        if (authenticatedUser.role !== USER_ROLES.CITIZEN) {
+            throw new Error("Solo los ciudadanos pueden crear incidentes");
+        }
+
+        if (!body.title || body.title.trim() === "") {
+            throw new Error("El título es obligatorio");
+        }
+
+        const title = body.title.trim();
+        const description = body.description?.trim() || "";
+
+        let location: unknown;
+
+        try {
+            location =
+                typeof body.location === "string"
+                    ? JSON.parse(body.location)
+                    : body.location;
+        } catch {
+            throw new Error("La ubicación tiene un formato inválido");
+        }
+
+        if (!location || typeof location !== "object") {
+            throw new Error("La ubicación es obligatoria");
+        }
+
+        const parsedLocation = location as {
+            type?: unknown;
+            coordinates?: unknown;
+        };
+
+        if (parsedLocation.type !== "Point") {
+            throw new Error("La ubicación debe ser de tipo Point");
+        }
+
+        if (!Array.isArray(parsedLocation.coordinates)) {
+            throw new Error("Las coordenadas son obligatorias");
+        }
+
+        if (parsedLocation.coordinates.length !== 2) {
+            throw new Error("Las coordenadas deben tener longitud y latitud");
+        }
+
+        const [lng, lat] = parsedLocation.coordinates;
+
+        if (typeof lng !== "number" || typeof lat !== "number") {
+            throw new Error("Las coordenadas deben ser numéricas");
+        }
+
+        if (lng < -180 || lng > 180) {
+            throw new Error("La longitud es inválida");
+        }
+
+        if (lat < -90 || lat > 90) {
+            throw new Error("La latitud es inválida");
+        }
+
+        if (!image) {
+            throw new Error("La imagen es obligatoria para validar el incidente");
+        }
+
+        if (!image.mimetype) {
+            throw new Error("La imagen no tiene un formato válido");
+        }
+
+        if (!image.buffer) {
+            throw new Error("No se pudo procesar la imagen");
+        }
+
+        return {
+            authenticatedUser: {
+                id: authenticatedUser.id,
+                role: authenticatedUser.role,
+            },
+            title,
+            description,
+            location: {
+                type: "Point",
+                coordinates: [lng, lat],
+            },
+            lng,
+            lat,
+            image,
+        };
+    }
+
+    static async resolvePendingIncidentDuplicate(
+        pendingIncidentId: string,
+        clerkUserId: string | null,
+        action: "confirm_duplicate" | "create_new"
+    ) {
+        console.log("1 - entra service");
+        console.log("pendingIncidentId:", pendingIncidentId);
+        console.log("clerkUserId:", clerkUserId);
+        console.log("action:", action);
+
+        if (!clerkUserId) {
+            console.log("2 - falla clerkUserId");
+            throw new Error("Usuario no autenticado");
+        }
+
+        if (!["confirm_duplicate", "create_new"].includes(action)) {
+            console.log("3 - falla action:", action);
+            throw new Error("Acción inválida");
+        }
+
+        console.log("4 - antes AuthService");
+
+        const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
+
+        console.log("5 - authenticatedUser:", authenticatedUser);
+
+        const authenticatedUserId = authenticatedUser?.id;
+
+        if (!authenticatedUserId) {
+            console.log("6 - falla authenticatedUserId");
+            throw new Error("El usuario autenticado no existe en la base de datos");
+        }
+
+        console.log("7 - antes buscar pending");
+
+        const pendingIncident = await PendingIncidentRepository.getPendingIncidentById(pendingIncidentId);
+
+        console.log("8 - pendingIncident:", pendingIncident);
+
+        if (!pendingIncident || !pendingIncident._id) {
+            console.log("9 - no existe pending");
+            throw new Error("El incidente pendiente no existe");
+        }
+
+        console.log("10 - createdBy pending:", pendingIncident.createdBy?.toString());
+        console.log("11 - authenticatedUserId:", authenticatedUserId);
+
+        if (pendingIncident.createdBy.toString() !== authenticatedUserId) {
+            console.log("12 - falla permisos");
+            throw new Error("No tenés permisos para resolver este incidente pendiente");
+        }
+
+        console.log("13 - expiredAt:", pendingIncident.expiredAt);
+        console.log("14 - now:", new Date());
+
+        if (pendingIncident.expiredAt < new Date()) {
+            console.log("15 - pending expirado");
+
+            await PendingIncidentRepository.deletePendingIncidentById(pendingIncident._id);
+
+            throw new Error("El incidente pendiente expiró");
+        }
+
+        console.log("16 - antes switch action:", action);
+
+        if (action === "confirm_duplicate") {
+            console.log("17 - entra confirm_duplicate");
+            console.log(
+                "INCIDENTE ORIGINAL:",
+                pendingIncident.aiValidation?.duplicateOfIncidentId
+            );
+
+            const duplicateIncidentId =
+                pendingIncident.aiValidation?.duplicateOfIncidentId;
+
+            if (!duplicateIncidentId) {
+                console.log("18 - no hay duplicateIncidentId");
+                throw new Error("El incidente pendiente no tiene un incidente duplicado asociado");
+            }
+
+            await IncidentReportRepository.createReport({
+                incidentId: new ObjectId(duplicateIncidentId),
+                createdBy: new ObjectId(authenticatedUserId),
+                createdAt: new Date(),
+            });
+
+            await PendingIncidentRepository.deletePendingIncidentById(
+                pendingIncident._id
+            );
+
+            return {
+                status: "reported_existing_incident",
+                message: "Se sumó tu reporte al incidente existente",
+                data: {
+                    incidentId: duplicateIncidentId.toString(),
+                },
+            };
+        }
+
+        if (action === "create_new") {
+            console.log("19 - entra create_new");
+
+            const now = new Date();
+
+            const createdIncident = await IncidentsRepository.createIncident({
+                title: pendingIncident.title,
+                description: pendingIncident.description,
+
+                originalTitle: pendingIncident.originalTitle,
+                originalDescription: pendingIncident.originalDescription,
+
+                categoryId: new ObjectId(pendingIncident.categoryId),
+
+                status: "open",
+
+                location: pendingIncident.location,
+
+                image: pendingIncident.image
+                    ? {
+                        url: pendingIncident.image.url,
+                        publicId: pendingIncident.image.publicId,
+                    }
+                    : null,
+
+                municipalityId: new ObjectId(pendingIncident.municipalityId),
+
+                createdBy: new ObjectId(authenticatedUserId),
+
+                aiValidation: pendingIncident.aiValidation
+                    ? {
+                        confidence: pendingIncident.aiValidation.confidence,
+                        aiUrgencyScore: pendingIncident.aiValidation.aiUrgencyScore,
+
+                        imageMatchesText:
+                            pendingIncident.aiValidation.imageMatchesText,
+                        imageContainsIncident:
+                            pendingIncident.aiValidation.imageContainsIncident,
+                        possibleFakeOrIrrelevantImage:
+                            pendingIncident.aiValidation.possibleFakeOrIrrelevantImage,
+
+                        // Importante: el usuario confirmó que NO es duplicado
+                        isPossibleDuplicate: false,
+                        duplicateOfIncidentId: null,
+                        duplicateConfidence: 0,
+                        duplicateReason: null,
+
+                        rejectionReason: pendingIncident.aiValidation.rejectionReason,
+                        reasons: pendingIncident.aiValidation.reasons,
+                    }
+                    : undefined,
+
+                createdAt: now,
+                updatedAt: now,
+            });
+
+            await PendingIncidentRepository.deletePendingIncidentById(
+                pendingIncident._id
+            );
+
+            return {
+                status: "created_new_incident",
+                message: "Se creó un nuevo incidente",
+                data: {
+                    incidentId:
+                        createdIncident.id,
+                },
+            };
+        }
+
+        console.log("20 - action no manejada:", action);
+
+        throw new Error("Acción no manejada");
     }
 }

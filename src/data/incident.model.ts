@@ -8,6 +8,17 @@ export type IncidentStatus =
     | "closed"
     | "rejected";
 
+export const INCIDENT_STATUS = {
+    IN_REVIEW: "in_review",
+    OPEN: "open",
+    ASSIGNED: "assigned",
+    IN_PROGRESS: "in_progress",
+    RESOLVED: "resolved",
+    CLOSED: "closed",
+    REJECTED: "rejected",
+    CANCELED: "canceled",
+} as const;
+
 export type IncidentPriority = "low" | "medium" | "high"; 
 
 export interface IncidentImage {

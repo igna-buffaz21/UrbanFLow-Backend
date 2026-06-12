@@ -21,5 +21,10 @@ router.post(
   uploadIncidentImage.single("image"),
   IncidentsController.createIncident
 );
+router.post(
+    "/pending/:pendingIncidentId/resolve-duplicate",
+    requireAuth,
+    IncidentsController.resolvePendingIncidentDuplicate
+);
 
 export default router;
