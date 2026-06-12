@@ -1,69 +1,14 @@
 import { ObjectId } from "mongodb";
 import { mongoDb } from "../config/mongodb.config";
 import { NearbyIncidentForAi } from "../data/types/ia/ia.type";
-
-interface IncidentFilters {
-    status?: string;
-    priority?: string;
-    categoryId?: string;
-    assignedTo?: string;
-}
-
-interface GetMapParams {
-    lng: number;
-    lat: number;
-    radius: number;
-    municipalityId: string;
-};
-
-
-type UserRole = "superadmin" | "admin" | "operator" | "citizen";
-
-export type GeoJSONPoint = {
-    type: "Point";
-    coordinates: [number, number]; // [lng, lat]
-};
-
-export type IncidentDetailResponse = {
-    id: string;
-    title: string;
-    description: string;
-    photoUrl: string | null;
-    resolutionPhotoUrl: string | null;
-    resolvedAt: Date | null;
-    location: GeoJSONPoint | null;
-    category: {
-        id: string;
-        name: string;
-    } | null;
-    priority: string;
-    status: string;
-    createdAt: Date;
-    createdBy: {
-        id: string;
-        name: string;
-        photoUrl: string | null;
-    } | null;
-    assignedTo: {
-        id: string;
-        name: string;
-        photoUrl: string | null;
-    } | null;
-    is_owner: boolean;
-};
-
-type FindNearbyForAiParams = {
-    lng: number;
-    lat: number;
-    radius: number;
-};
-
+import { IncidentDetailResponse, GetMapParams, IncidentFilters, FindNearbyForAiParams } from "../data/types/incident/incidents.type";
+import { COLLECTION_NAMES } from "../data/types/global/const.global";
 
 export class IncidentsRepository {
     static async createIncident(incident: object) {
         try {
             const db = mongoDb();
-            const result = await db.collection("incidents").insertOne(incident);
+            const result = await db.collection(COLLECTION_NAMES.INCIDENTS).insertOne(incident);
 
             return {
                 id: result.insertedId.toString(),
@@ -79,7 +24,7 @@ export class IncidentsRepository {
             const db = mongoDb();
 
             const result = await db
-                .collection("incidents")
+                .collection(COLLECTION_NAMES.INCIDENTS)
                 .aggregate([
                     {
                         $geoNear: {
@@ -133,7 +78,7 @@ export class IncidentsRepository {
 
             if (status) query.status = status;
 
-            const incidents = await db.collection("incidents")
+            const incidents = await db.collection(COLLECTION_NAMES.INCIDENTS)
                 .find(query)
                 .project({
                     title: 1,
@@ -180,7 +125,7 @@ export class IncidentsRepository {
                 query.priority = filters.priority;
             }
 
-            const incidents = await db.collection("incidents")
+            const incidents = await db.collection(COLLECTION_NAMES.INCIDENTS)
                 .find(query)
                 .project({
                     title: 1,
@@ -215,7 +160,7 @@ export class IncidentsRepository {
             if (filters.categoryId) query.categoryId = new ObjectId(filters.categoryId);
             if (filters.assignedTo) query.assignedTo = new ObjectId(filters.assignedTo);
 
-            const incidents = await db.collection("incidents")
+            const incidents = await db.collection(COLLECTION_NAMES.INCIDENTS)
                 .find(query)
                 .project({
                     title: 1,
@@ -260,7 +205,7 @@ export class IncidentsRepository {
 
             const visibleStatuses = ["open", "assigned", "in_progress", "resolved", "in_review"];
 
-            const incidents = await db.collection("incidents")
+            const incidents = await db.collection(COLLECTION_NAMES.INCIDENTS)
                 .find({
                     municipalityId: new ObjectId(municipalityId),
                     status: { $in: visibleStatuses },
@@ -315,7 +260,7 @@ export class IncidentsRepository {
         try {
             const db = mongoDb();
 
-            const result = await db.collection("incidents").findOneAndUpdate(
+            const result = await db.collection(COLLECTION_NAMES.INCIDENTS).findOneAndUpdate(
                 { _id: incidentId },
                 {
                     $set: {
@@ -374,7 +319,7 @@ export class IncidentsRepository {
                 updateData.assignedAt = new Date();
             }
 
-            const result = await db.collection("incidents").findOneAndUpdate(
+            const result = await db.collection(COLLECTION_NAMES.INCIDENTS).findOneAndUpdate(
                 { _id: incidentId },
                 {
                     $set: updateData
@@ -408,7 +353,7 @@ export class IncidentsRepository {
         try {
             const db = mongoDb();
 
-            const result = await db.collection("incidents").findOneAndUpdate(
+            const result = await db.collection(COLLECTION_NAMES.INCIDENTS).findOneAndUpdate(
                 { _id: incidentId },
                 {
                     $set: {
@@ -445,7 +390,7 @@ export class IncidentsRepository {
 
             const resolvedAt = new Date();
 
-            const result = await db.collection("incidents").findOneAndUpdate(
+            const result = await db.collection(COLLECTION_NAMES.INCIDENTS).findOneAndUpdate(
                 {
                     _id: incidentId,
                     assignedTo: operatorId
@@ -483,7 +428,7 @@ export class IncidentsRepository {
         try {
             const db = mongoDb();
 
-            return await db.collection("incidents").findOne({
+            return await db.collection(COLLECTION_NAMES.INCIDENTS).findOne({
                 _id: incidentId
             });
         } catch (err) {
@@ -498,7 +443,7 @@ export class IncidentsRepository {
         try {
             const db = mongoDb();
 
-            const incident = await db.collection("incidents").findOne({
+            const incident = await db.collection(COLLECTION_NAMES.INCIDENTS).findOne({
                 _id: incidentId,
             });
 
@@ -520,25 +465,27 @@ export class IncidentsRepository {
 
             const [createdBy, category, authenticatedUser, assignedTo] = await Promise.all([
                 createdById
-                    ? db.collection("users").findOne({ _id: createdById })
+                    ? db.collection(COLLECTION_NAMES.USERS).findOne({ _id: createdById })
                     : Promise.resolve(null),
 
                 categoryId
-                    ? db.collection("categories").findOne({ _id: categoryId })
+                    ? db.collection(COLLECTION_NAMES.CATEGORIES).findOne({ _id: categoryId })
                     : Promise.resolve(null),
 
                 clerkUserId
-                    ? db.collection("users").findOne({ clerkId: clerkUserId })
+                    ? db.collection(COLLECTION_NAMES.USERS).findOne({ clerkId: clerkUserId })
                     : Promise.resolve(null),
 
                 assignedToId
-                    ? db.collection("users").findOne({ _id: assignedToId })
+                    ? db.collection(COLLECTION_NAMES.USERS).findOne({ _id: assignedToId })
                     : Promise.resolve(null),
             ]);
 
             const isOwner =
                 Boolean(authenticatedUser && createdById) &&
                 authenticatedUser!._id.toString() === createdById!.toString();
+
+            const aiUrgencyScore = incident.aiValidation?.aiUrgencyScore ?? 1;
 
             return {
                 id: incident._id.toString(),
@@ -561,6 +508,9 @@ export class IncidentsRepository {
                     : null,
                 priority: incident.priority,
                 status: incident.status,
+
+                aiUrgencyScore,
+
                 createdAt: incident.createdAt,
                 is_owner: isOwner,
                 createdBy: createdBy
@@ -588,7 +538,7 @@ export class IncidentsRepository {
             const db = mongoDb();
 
             const result = await db
-                .collection("incidents")
+                .collection(COLLECTION_NAMES.INCIDENTS)
                 .aggregate([
                     {
                         $geoNear: {

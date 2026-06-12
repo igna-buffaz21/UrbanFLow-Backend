@@ -2,27 +2,8 @@ import { ObjectId } from "mongodb";
 import { mongoDb } from "../config/mongodb.config";
 import { Incident } from "../data/incident.model";
 import { IncidentReport } from "../data/incident-report.model";
-
-const COLLECTION_NAME = "incident_reports";
-
-interface ReportFilter {
-  incidentId: string;
-  createdBy: string;
-}
-
-interface MyIncidentReportResponse {
-  reportId: string;
-  reportedAt: Date;
-  incident: {
-    id: string;
-    title: string;
-    description: string;
-    status: string;
-    priority?: string;
-    photoUrl?: string | null;
-    createdAt: Date;
-  };
-}
+import { ReportFilter, MyIncidentReportResponse} from "../data/types/incident/incidents-reports.type";
+import { COLLECTION_NAMES } from "../data/types/global/const.global";
 
 export class IncidentReportRepository {
   static async getMyReports(
@@ -32,7 +13,7 @@ export class IncidentReportRepository {
       const db = mongoDb();
 
       const reports = await db
-        .collection<IncidentReport>(COLLECTION_NAME)
+        .collection<IncidentReport>(COLLECTION_NAMES.INCIDENT_REPORTS)
         .aggregate([
           {
             $match: {
@@ -41,7 +22,7 @@ export class IncidentReportRepository {
           },
           {
             $lookup: {
-              from: "incidents",
+              from: COLLECTION_NAMES.INCIDENTS,
               localField: "incidentId",
               foreignField: "_id",
               as: "incidentData",
@@ -87,7 +68,7 @@ export class IncidentReportRepository {
       const db = mongoDb();
 
       const incident = await db
-        .collection<Incident>("incidents")
+        .collection<Incident>(COLLECTION_NAMES.INCIDENTS)
         .findOne({ _id: new ObjectId(incidentId) });
 
       return incident ?? null;
@@ -101,7 +82,7 @@ export class IncidentReportRepository {
       const db = mongoDb();
 
       const report = await db
-        .collection<IncidentReport>(COLLECTION_NAME)
+        .collection<IncidentReport>(COLLECTION_NAMES.INCIDENT_REPORTS)
         .findOne({
           incidentId: new ObjectId(filter.incidentId),
           createdBy: new ObjectId(filter.createdBy),
@@ -118,7 +99,7 @@ export class IncidentReportRepository {
       const db = mongoDb();
 
       return await db
-        .collection<IncidentReport>(COLLECTION_NAME)
+        .collection<IncidentReport>(COLLECTION_NAMES.INCIDENT_REPORTS)
         .countDocuments({
           incidentId: new ObjectId(incidentId),
         });
@@ -134,7 +115,7 @@ export class IncidentReportRepository {
       const db = mongoDb();
 
       const result = await db
-        .collection<IncidentReport>(COLLECTION_NAME)
+        .collection<IncidentReport>(COLLECTION_NAMES.INCIDENT_REPORTS)
         .insertOne(data as IncidentReport);
 
       return {
@@ -155,7 +136,7 @@ export class IncidentReportRepository {
       const db = mongoDb();
 
       const result = await db
-        .collection<IncidentReport>(COLLECTION_NAME)
+        .collection<IncidentReport>(COLLECTION_NAMES.INCIDENT_REPORTS)
         .deleteOne({
           incidentId: new ObjectId(filter.incidentId),
           createdBy: new ObjectId(filter.createdBy),

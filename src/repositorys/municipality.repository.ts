@@ -1,25 +1,8 @@
 import { ObjectId } from "mongodb";
 import { Municipality, MunicipalityStatus } from "../data/municipality.model";
 import { mongoDb } from "../config/mongodb.config";
-
-const COLLECTION_NAME = "municipalities";
-
-interface GetMunicipalitiesFilters {
-    status?: MunicipalityStatus;
-    districtId?: string;
-}
-
-interface MunicipalityResponse {
-    id: string;
-    name: string;
-    district: {
-        id: string;
-        name: string;
-    };
-    status: MunicipalityStatus;
-    createdAt: Date;
-    updatedAt: Date;
-}
+import { COLLECTION_NAMES } from "../data/types/global/const.global";
+import { GetMunicipalitiesFilters, MunicipalityResponse } from "../data/types/municipality/municipality.type";
 
 export class MunicipalityRepository {
 
@@ -39,12 +22,12 @@ export class MunicipalityRepository {
             }
 
             const municipalities = await db
-                .collection<Municipality>(COLLECTION_NAME)
+                .collection<Municipality>(COLLECTION_NAMES.MUNICIPALITIES)
                 .aggregate([
                     { $match: matchStage },
                     {
                         $lookup: {
-                            from: "districts",
+                            from: COLLECTION_NAMES.DISTRICTS,
                             localField: "districtId",
                             foreignField: "_id",
                             as: "districtData",
@@ -81,12 +64,12 @@ export class MunicipalityRepository {
             const db = mongoDb();
 
             const result = await db
-                .collection<Municipality>(COLLECTION_NAME)
+                .collection<Municipality>(COLLECTION_NAMES.MUNICIPALITIES)
                 .aggregate([
                     { $match: { _id: new ObjectId(id) } },
                     {
                         $lookup: {
-                            from: "districts",
+                            from: COLLECTION_NAMES.DISTRICTS,
                             localField: "districtId",
                             foreignField: "_id",
                             as: "districtData",
@@ -120,7 +103,7 @@ export class MunicipalityRepository {
         try {
             const db = mongoDb();
             const municipality = await db
-                .collection("municipalities")
+                .collection(COLLECTION_NAMES.MUNICIPALITIES)
                 .findOne({ name: name });
 
             return municipality;
@@ -136,7 +119,7 @@ export class MunicipalityRepository {
             const db = mongoDb();
 
             const result = await db
-                .collection<Municipality>(COLLECTION_NAME)
+                .collection<Municipality>(COLLECTION_NAMES.MUNICIPALITIES)
                 .insertOne(data as Municipality);
 
             const created = await MunicipalityRepository.getMunicipalityById(
@@ -161,7 +144,7 @@ export class MunicipalityRepository {
             const db = mongoDb();
 
             const result = await db
-                .collection<Municipality>(COLLECTION_NAME)
+                .collection<Municipality>(COLLECTION_NAMES.MUNICIPALITIES)
                 .findOneAndUpdate(
                     { _id: new ObjectId(id) },
                     { $set: { ...data, updatedAt: new Date() } },
