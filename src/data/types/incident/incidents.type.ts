@@ -79,3 +79,16 @@ export type ValidatedCreateIncidentInput = {
     lat: number;
     image: Express.Multer.File;
 };
+
+export interface GetIncidentFeedInput {
+    lat: number;
+    lng: number;
+    page?: number;
+    limit?: number;
+}
+
+export interface GetIncidentFeedRepositoryParams {
+    municipalityId: string;
+    page: number;
+    limit: number;
+}
