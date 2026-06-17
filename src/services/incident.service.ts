@@ -9,7 +9,7 @@ import { ImageTypes } from "../data/types/image.types";
 import { AiService } from "./ia.service";
 import { IncidentReportRepository } from "../repositorys/incident-report.repository";
 import { USER_ROLES } from "../data/types/global/const.global";
-import { IncidentPriority, IncidentFilters, ValidatedCreateIncidentInput } from "../data/types/incident/incidents.type";
+import { IncidentPriority, IncidentFilters, ValidatedCreateIncidentInput, GetIncidentFeedInput } from "../data/types/incident/incidents.type";
 import { VALID_STATUSES, VALID_PRIORITIES, VALID_ASSIGNED_STATUSES } from "../data/types/incident/incidents.const";
 import { PendingIncidentRepository } from "../repositorys/pending-incident.repository";
 import { PendingIncident } from "../data/pending-incident.model";
@@ -977,5 +977,28 @@ export class IncidentsService {
         console.log("20 - action no manejada:", action);
 
         throw new Error("Acción no manejada");
+    }
+
+    static async getFeed(input: GetIncidentFeedInput) {
+
+        if (Number.isNaN(input.lat) || Number.isNaN(input.lng)) {
+            throw new Error("La ubicacion es obligatoria!");
+        }
+
+        const page = input.page && input.page > 0 ? input.page : 1;
+        const limit = input.limit && input.limit > 0 ? input.limit : 10;
+
+        const municipality = await DistrictRepository.findMunicipalityByPoint(input.lng, input.lat);
+
+
+        if (!municipality) {
+            throw new Error("No se encontró un municipio para la ubicación indicada");
+        }
+
+        return await IncidentsRepository.getFeedByMunicipality({
+            municipalityId: municipality.toString(),
+            page,
+            limit
+        });
     }
 }

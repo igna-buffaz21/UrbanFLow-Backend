@@ -201,4 +201,36 @@ export class IncidentsController {
             next(error);
         }
     }
+
+    static async getFeed(
+        req: Request,
+        res: Response,
+        next: NextFunction
+    ) {
+        try {
+            const lat = Number(req.query.lat);
+            const lng = Number(req.query.lng);
+
+            const page = Number(req.query.page) || 1;
+            const limit = Number(req.query.limit) || 10;
+
+            const incidents = await IncidentsService.getFeed({
+                lat,
+                lng,
+                page,
+                limit
+            });
+
+            res.status(200).json({
+                message: "Feed de incidentes obtenido correctamente",
+                data: incidents,
+                pagination: {
+                    page,
+                    limit
+                }
+            });
+        } catch (err) {
+            next(err);
+        }
+    }
 }

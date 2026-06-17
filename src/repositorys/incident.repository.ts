@@ -1,7 +1,7 @@
 import { ObjectId } from "mongodb";
 import { mongoDb } from "../config/mongodb.config";
 import { NearbyIncidentForAi } from "../data/types/ia/ia.type";
-import { IncidentDetailResponse, GetMapParams, IncidentFilters, FindNearbyForAiParams } from "../data/types/incident/incidents.type";
+import { IncidentDetailResponse, GetMapParams, IncidentFilters, FindNearbyForAiParams, GetIncidentFeedRepositoryParams } from "../data/types/incident/incidents.type";
 import { COLLECTION_NAMES } from "../data/types/global/const.global";
 import { INCIDENT_STATUS } from "../data/incident.model";
 
@@ -630,6 +630,171 @@ export class IncidentsRepository {
             return result as NearbyIncidentForAi[];
         } catch (err) {
             throw new Error(`Error al obtener incidentes cercanos para IA: ${err}`);
+        }
+    }
+
+    static async getFeedByMunicipality(params: GetIncidentFeedRepositoryParams) {
+        try {
+            const db = mongoDb();
+
+            const skip = (params.page - 1) * params.limit;
+
+            const result = await db
+                .collection(COLLECTION_NAMES.INCIDENTS)
+                .aggregate([
+                    {
+                        $match: {
+                            municipalityId: new ObjectId(params.municipalityId),
+                            status: {
+                                $in: ["open", "in_review", "in_progress"]
+                            }
+                        }
+                    },
+                    {
+                        $lookup: {
+                            from: COLLECTION_NAMES.INCIDENT_REPORTS,
+                            localField: "_id",
+                            foreignField: "incidentId",
+                            as: "reports"
+                        }
+                    },
+                    {
+                        $lookup: {
+                            from: COLLECTION_NAMES.INCIDENT_COMMENTS,
+                            localField: "_id",
+                            foreignField: "incidentId",
+                            as: "comments"
+                        }
+                    },
+                    {
+                        $lookup: {
+                            from: COLLECTION_NAMES.CATEGORIES,
+                            localField: "categoryId",
+                            foreignField: "_id",
+                            as: "category"
+                        }
+                    },
+                    {
+                        $unwind: {
+                            path: "$category",
+                            preserveNullAndEmptyArrays: true
+                        }
+                    },
+                    {
+                        $lookup: {
+                            from: COLLECTION_NAMES.USERS,
+                            localField: "createdBy",
+                            foreignField: "_id",
+                            as: "createdByUser"
+                        }
+                    },
+                    {
+                        $unwind: {
+                            path: "$createdByUser",
+                            preserveNullAndEmptyArrays: true
+                        }
+                    },
+                    {
+                        $addFields: {
+                            reportsCount: {
+                                $size: "$reports"
+                            },
+                            commentsCount: {
+                                $size: "$comments"
+                            },
+                            aiUrgencyScore: {
+                                $ifNull: ["$aiValidation.aiUrgencyScore", 0]
+                            },
+                            relevanceScore: {
+                                $add: [
+                                    {
+                                        $multiply: [
+                                            {
+                                                $ifNull: ["$aiValidation.aiUrgencyScore", 0]
+                                            },
+                                            2
+                                        ]
+                                    },
+                                    {
+                                        $min: [
+                                            {
+                                                $size: "$reports"
+                                            },
+                                            10
+                                        ]
+                                    },
+                                    {
+                                        $multiply: [
+                                            {
+                                                $min: [
+                                                    {
+                                                        $size: "$comments"
+                                                    },
+                                                    20
+                                                ]
+                                            },
+                                            0.5
+                                        ]
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        $sort: {
+                            relevanceScore: -1,
+                            createdAt: -1
+                        }
+                    },
+                    {
+                        $skip: skip
+                    },
+                    {
+                        $limit: params.limit
+                    },
+                    {
+                        $project: {
+                            _id: 0,
+                            id: {
+                                $toString: "$_id"
+                            },
+
+                            title: 1,
+                            description: 1,
+
+                            photoUrl: "$image.url",
+
+                            status: 1,
+
+                            aiUrgencyScore: 1,
+                            reportsCount: 1,
+                            commentsCount: 1,
+                            relevanceScore: 1,
+
+                            createdAt: 1,
+
+                            category: {
+                                id: {
+                                    $toString: "$category._id"
+                                },
+                                name: "$category.name"
+                            },
+
+                            createdBy: {
+                                id: {
+                                    $toString: "$createdByUser._id"
+                                },
+                                name: "$createdByUser.name",
+                                photoUrl: "$createdByUser.photoUrl"
+                            }
+                        }
+                    }
+                ])
+                .toArray();
+
+            return result;
+        } catch (err) {
+            throw new Error(`Error al obtener el feed de incidentes por municipio: ${err}`);
         }
     }
 }
