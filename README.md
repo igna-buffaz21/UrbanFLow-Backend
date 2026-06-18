@@ -36,3 +36,5 @@ La documentación del proyecto se encuentra dentro de la carpeta `docs`:
 - `docs/structure.md`: explicación de la estructura interna del proyecto.
 - `docs/ia.md`: explicación de la validación de incidentes con IA.
 - `docs/use-cases.md`: casos de uso implementados por el backend.
+
+-
