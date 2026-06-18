@@ -233,4 +233,18 @@ export class IncidentsController {
             next(err);
         }
     }
+    static async getClosedIncidentsHistory(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { userId } = getAuth(req);
+
+            const page = Number(req.query.page) || 1;
+            const limit = Number(req.query.limit) || 10;
+
+            const result = await IncidentsService.getClosedIncidentsHistory(userId, page, limit);
+
+            res.status(200).json(result);
+        } catch (err) {
+            next(err);
+        }
+    }
 }
