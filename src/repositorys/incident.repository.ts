@@ -797,4 +797,85 @@ export class IncidentsRepository {
             throw new Error(`Error al obtener el feed de incidentes por municipio: ${err}`);
         }
     }
+
+    static async getClosedIncidentsPaginated(
+        municipalityId: string,
+        page: number,
+        limit: number
+    ) {
+        try {
+            const db = mongoDb();
+            const skip = (page - 1) * limit;
+
+            const [result] = await db
+                .collection(COLLECTION_NAMES.INCIDENTS)
+                .aggregate([
+                    {
+                        $match: {
+                            municipalityId: new ObjectId(municipalityId),
+                            status: "closed",
+                        },
+                    },
+                    {
+                        $facet: {
+                            data: [
+                                {
+                                    $lookup: {
+                                        from: COLLECTION_NAMES.USERS,
+                                        localField: "assignedTo",
+                                        foreignField: "_id",
+                                        as: "assignedOperator",
+                                    },
+                                },
+                                {
+                                    $unwind: {
+                                        path: "$assignedOperator",
+                                        preserveNullAndEmptyArrays: true,
+                                    },
+                                },
+                                {
+                                    $project: {
+                                        title: 1,
+                                        status: 1,
+                                        priority: 1,
+                                        createdAt: 1,
+                                        closedAt: 1,
+                                        assignedTo: {
+                                            id: "$assignedOperator._id",
+                                            name: "$assignedOperator.name",
+                                        },
+                                    },
+                                },
+                                { $skip: skip },
+                                { $limit: limit },
+                            ],
+                            total: [{ $count: "count" }],
+                        },
+                    },
+                ])
+                .toArray();
+
+            return {
+                data: result.data.map((incident: any) => ({
+                    id: incident._id.toString(),
+                    title: incident.title,
+                    status: incident.status,
+                    priority: incident.priority,
+                    createdAt: incident.createdAt,
+                    closedAt: incident.closedAt ?? null,
+                    assignedTo: incident.assignedTo?.id
+                        ? {
+                            id: incident.assignedTo.id.toString(),
+                            name: incident.assignedTo.name,
+                        }
+                        : null,
+                })),
+                total: result.total[0]?.count ?? 0,
+                page,
+                limit,
+            };
+        } catch (err) {
+            throw new Error("Failed to get closed incidents paginated: " + err);
+        }
+    }
 }
