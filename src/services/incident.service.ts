@@ -684,24 +684,24 @@ export class IncidentsService {
     }
 
     private static buildAiValidation(aiResult: any) {
-    return {
-        confidence: aiResult.confidence,
-        aiUrgencyScore: aiResult.aiUrgencyScore,
+        return {
+            confidence: aiResult.confidence,
+            aiUrgencyScore: aiResult.aiUrgencyScore,
 
-        imageMatchesText: aiResult.imageMatchesText,
-        imageContainsIncident: aiResult.imageContainsIncident,
-        possibleFakeOrIrrelevantImage: aiResult.possibleFakeOrIrrelevantImage,
+            imageMatchesText: aiResult.imageMatchesText,
+            imageContainsIncident: aiResult.imageContainsIncident,
+            possibleFakeOrIrrelevantImage: aiResult.possibleFakeOrIrrelevantImage,
 
-        isPossibleDuplicate: aiResult.isPossibleDuplicate,
-        duplicateOfIncidentId: aiResult.duplicateOfIncidentId
-            ? new ObjectId(aiResult.duplicateOfIncidentId)
-            : null,
-        duplicateConfidence: aiResult.duplicateConfidence,
-        duplicateReason: aiResult.duplicateReason,
+            isPossibleDuplicate: aiResult.isPossibleDuplicate,
+            duplicateOfIncidentId: aiResult.duplicateOfIncidentId
+                ? new ObjectId(aiResult.duplicateOfIncidentId)
+                : null,
+            duplicateConfidence: aiResult.duplicateConfidence,
+            duplicateReason: aiResult.duplicateReason,
 
-        rejectionReason: aiResult.rejectionReason,
-        reasons: aiResult.reasons,
-    };
+            rejectionReason: aiResult.rejectionReason,
+            reasons: aiResult.reasons,
+        };
     }
 
     private static async validateCreateIncidentInput(
@@ -1000,5 +1000,32 @@ export class IncidentsService {
             page,
             limit
         });
+    }
+    
+    static async getClosedIncidentsHistory(
+        clerkUserId: string | null,
+        page: number,
+        limit: number
+    ) {
+        if (!clerkUserId) throw new Error("User not authenticated");
+
+        const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
+
+        if (![USER_ROLES.ADMIN, USER_ROLES.SUPERADMIN].includes(authenticatedUser.role)) {
+            throw new Error("User does not have permission to view incident history");
+        }
+
+        if (!authenticatedUser.municipalityId || !ObjectId.isValid(authenticatedUser.municipalityId)) {
+            throw new Error("User must have a valid municipality assigned");
+        }
+
+        const validPage = page > 0 ? page : 1;
+        const validLimit = limit > 0 ? limit : 10;
+
+        return await IncidentsRepository.getClosedIncidentsPaginated(
+            authenticatedUser.municipalityId,
+            validPage,
+            validLimit
+        );
     }
 }
