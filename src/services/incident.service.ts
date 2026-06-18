@@ -688,7 +688,13 @@ export class IncidentsService {
         return {
             confidence: aiResult.confidence,
             aiUrgencyScore: aiResult.aiUrgencyScore,
+        return {
+            confidence: aiResult.confidence,
+            aiUrgencyScore: aiResult.aiUrgencyScore,
 
+            imageMatchesText: aiResult.imageMatchesText,
+            imageContainsIncident: aiResult.imageContainsIncident,
+            possibleFakeOrIrrelevantImage: aiResult.possibleFakeOrIrrelevantImage,
             imageMatchesText: aiResult.imageMatchesText,
             imageContainsIncident: aiResult.imageContainsIncident,
             possibleFakeOrIrrelevantImage: aiResult.possibleFakeOrIrrelevantImage,
@@ -699,7 +705,16 @@ export class IncidentsService {
                 : null,
             duplicateConfidence: aiResult.duplicateConfidence,
             duplicateReason: aiResult.duplicateReason,
+            isPossibleDuplicate: aiResult.isPossibleDuplicate,
+            duplicateOfIncidentId: aiResult.duplicateOfIncidentId
+                ? new ObjectId(aiResult.duplicateOfIncidentId)
+                : null,
+            duplicateConfidence: aiResult.duplicateConfidence,
+            duplicateReason: aiResult.duplicateReason,
 
+            rejectionReason: aiResult.rejectionReason,
+            reasons: aiResult.reasons,
+        };
             rejectionReason: aiResult.rejectionReason,
             reasons: aiResult.reasons,
         };

@@ -1,80 +1,40 @@
-Backend Base en Express con TypeScript + MySQL + MongoDB
+# UrbanFlow Backend
 
---------------------------------------------------------------------------------
+Backend para una plataforma de gestión de incidentes urbanos. Permite registrar incidentes con ubicación e imagen, validarlos con IA, asignarlos a operarios municipales, gestionar usuarios por roles y consultar información territorial como distritos y municipalidades.
 
-Estructura Base:
+## Stack
 
-.
-├── src
-│   ├── config
-│   │   ├── db.config.ts          → Configuración MySQL
-│   │   └── mongodb.config.ts     → Configuración MongoDB
-│   │
-│   ├── routes                    → Rutas de la API
-│   ├── controllers               → Controladores (http)
-│   ├── services                  → Servicios (lógica de negocio)
-│   ├── repositories              → Acceso a datos (MySQL / Mongo)
-│   ├── utils                     → Extras (constantes, etc)
-│   │
-│   └── index.ts                  → Punto de entrada de la app
-│
-├── .env                  → Variables de entorno
-├── .gitignore            → Todo lo que ignora git al subir al repositorio           
-├── package.json
-└── tsconfig.json
+- **Node.js**
+- **Express**
+- **TypeScript**
+- **MongoDB**
+- **Clerk** para autenticación e invitación de usuarios
+- **Cloudinary** para almacenamiento de imágenes
+- **Google Gemini** para validación de incidentes con IA
+- **Multer** para carga de archivos
+- **Sharp / HEIC convert** para procesamiento de imágenes
 
---------------------------------------------------------------------------------
+## Estructura general
 
-Flujo:
+El proyecto usa una arquitectura por capas:
 
-1) Router
+- `src/index.ts`: punto de entrada de la aplicación.
+- `src/routers`: definición de rutas HTTP.
+- `src/controllers`: adaptación entre HTTP y la lógica de negocio.
+- `src/services`: reglas de negocio y validaciones principales.
+- `src/repositorys`: acceso a MongoDB y servicios externos de persistencia.
+- `src/data`: modelos principales de MongoDB.
+- `src/data/types`: interfaces, tipos y constantes compartidas.
+- `src/middlewares`: autenticación, subida de archivos, logging y manejo de errores.
+- `src/config`: configuración de servicios como MongoDB y Cloudinary.
 
-Define las rutas de la API y llama al controlador correspondiente.
-- No contiene lógica.
+## Documentación
 
-2) Controller
+La documentación del proyecto se encuentra dentro de la carpeta `docs`:
 
-Recibe la request, llama al service y devuelve una respuesta.
-- No contiene lógica.
+- `docs/start.md`: pasos para iniciar el backend.
+- `docs/structure.md`: explicación de la estructura interna del proyecto.
+- `docs/ia.md`: explicación de la validación de incidentes con IA.
+- `docs/use-cases.md`: casos de uso implementados por el backend.
 
-3) Service
-
-Contiene la lógica de negocio y llama a repository si hace falta.
-
-4) Repository
-
-Capa que accede a la base de datos y devuelve una respuesta a service.
-
---------------------------------------------------------------------------------
-
-Scripts disponibles
-
-- Modo desarrollo
-
-npm run dev
-
-- Compilar TypeScript
-
-npm run build
-
-- Ejecutar versión compilada
-
-npm start
-
---------------------------------------------------------------------------------
-
-Endpoint de prueba
-
-GET /
-
-Responde:
-
-- Fecha del servidor
-
-- Ping MySQL (NOW())
-
-- Ping Mongo (db.command())
-
-- Resultado de 1 + 1
-
-Sirve para verificar que TODO funciona correctamente.
+-
