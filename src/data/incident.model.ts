@@ -75,6 +75,7 @@ export interface Incident {
     startedAt?: Date;
     resolvedAt?: Date;
     closedAt?: Date;
+    closedBy?: ObjectId;
 
     updatedAt: Date;
 }

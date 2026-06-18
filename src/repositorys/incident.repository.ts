@@ -1,7 +1,7 @@
 import { ObjectId } from "mongodb";
 import { mongoDb } from "../config/mongodb.config";
 import { NearbyIncidentForAi } from "../data/types/ia/ia.type";
-import { IncidentDetailResponse, GetMapParams, IncidentFilters, FindNearbyForAiParams, GetIncidentFeedRepositoryParams } from "../data/types/incident/incidents.type";
+import { IncidentDetailResponse, GetMapParams, IncidentFilters, FindNearbyForAiParams, GetIncidentFeedRepositoryParams, FrequencyByCategoryResult, ResolutionByCategoryResult, ResolutionMetricsResult, } from "../data/types/incident/incidents.type";
 import { COLLECTION_NAMES } from "../data/types/global/const.global";
 import { INCIDENT_STATUS } from "../data/incident.model";
 
@@ -335,7 +335,7 @@ export class IncidentsRepository {
         }
     }
 
-    static async actualizarEstado(incidentId: ObjectId, status: string, resolutionPhotoUrl?: string) {
+    static async actualizarEstado(incidentId: ObjectId, status: string, resolutionPhotoUrl?: string, closedByUserId?: string) {
         try {
             const db = mongoDb();
 
@@ -358,6 +358,9 @@ export class IncidentsRepository {
 
             if (status === "closed") {
                 updateData.closedAt = new Date();
+                if (closedByUserId) {
+                    updateData.closedBy = new ObjectId(closedByUserId);
+                }
             }
 
             if (status === "assigned") {
@@ -508,21 +511,26 @@ export class IncidentsRepository {
                 ? new ObjectId(incident.assignedTo.toString())
                 : null;
 
-            const [createdBy, category, authenticatedUser, assignedTo] = await Promise.all([
+            // ← declarado antes del Promise.all
+            const closedById = incident.closedBy
+                ? new ObjectId(incident.closedBy.toString())
+                : null;
+
+            const [createdBy, category, authenticatedUser, assignedTo, closedBy] = await Promise.all([
                 createdById
                     ? db.collection(COLLECTION_NAMES.USERS).findOne({ _id: createdById })
                     : Promise.resolve(null),
-
                 categoryId
                     ? db.collection(COLLECTION_NAMES.CATEGORIES).findOne({ _id: categoryId })
                     : Promise.resolve(null),
-
                 clerkUserId
                     ? db.collection(COLLECTION_NAMES.USERS).findOne({ clerkId: clerkUserId })
                     : Promise.resolve(null),
-
                 assignedToId
                     ? db.collection(COLLECTION_NAMES.USERS).findOne({ _id: assignedToId })
+                    : Promise.resolve(null),
+                closedById
+                    ? db.collection(COLLECTION_NAMES.USERS).findOne({ _id: closedById })
                     : Promise.resolve(null),
             ]);
 
@@ -540,22 +548,14 @@ export class IncidentsRepository {
                 resolutionPhotoUrl: incident.resolutionPhotoUrl || null,
                 resolvedAt: incident.resolvedAt || null,
                 location: incident.location
-                    ? {
-                        type: "Point",
-                        coordinates: incident.location.coordinates,
-                    }
+                    ? { type: "Point", coordinates: incident.location.coordinates }
                     : null,
                 category: category
-                    ? {
-                        id: category._id.toString(),
-                        name: category.name,
-                    }
+                    ? { id: category._id.toString(), name: category.name }
                     : null,
                 priority: incident.priority,
                 status: incident.status,
-
                 aiUrgencyScore,
-
                 createdAt: incident.createdAt,
                 is_owner: isOwner,
                 createdBy: createdBy
@@ -570,6 +570,13 @@ export class IncidentsRepository {
                         id: assignedTo._id.toString(),
                         name: assignedTo.name,
                         photoUrl: assignedTo.photoUrl || null,
+                    }
+                    : null,
+                closedBy: closedBy
+                    ? {
+                        id: closedBy._id.toString(),
+                        name: closedBy.name,
+                        photoUrl: closedBy.photoUrl || null,
                     }
                     : null,
             };
@@ -877,5 +884,200 @@ export class IncidentsRepository {
         } catch (err) {
             throw new Error("Failed to get closed incidents paginated: " + err);
         }
+    }
+
+    static async getFrequencyByCategoryStats(municipalityId: string): Promise<FrequencyByCategoryResult[]> {
+        const db = mongoDb();
+
+        const result = await db
+            .collection(COLLECTION_NAMES.INCIDENTS)
+            .aggregate([
+                {
+                    $match: {
+                        municipalityId: new ObjectId(municipalityId),
+                    },
+                },
+                {
+                    $group: {
+                        _id: "$categoryId",
+                        total: { $sum: 1 },
+                        open: {
+                            $sum: { $cond: [{ $eq: ["$status", "open"] }, 1, 0] },
+                        },
+                        assigned: {
+                            $sum: { $cond: [{ $eq: ["$status", "assigned"] }, 1, 0] },
+                        },
+                        resolved: {
+                            $sum: { $cond: [{ $eq: ["$status", "resolved"] }, 1, 0] },
+                        },
+                        closed: {
+                            $sum: { $cond: [{ $eq: ["$status", "closed"] }, 1, 0] },
+                        },
+                    },
+                },
+                {
+                    $lookup: {
+                        from: COLLECTION_NAMES.CATEGORIES,
+                        localField: "_id",
+                        foreignField: "_id",
+                        as: "category",
+                    },
+                },
+                {
+                    $unwind: {
+                        path: "$category",
+                        preserveNullAndEmptyArrays: true,
+                    },
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        categoryId: { $toString: "$_id" },
+                        categoryName: "$category.name",
+                        categoryLabel: "$category.label",
+                        total: 1,
+                        open: 1,
+                        assigned: 1,
+                        resolved: 1,
+                        closed: 1,
+                    },
+                },
+                { $sort: { total: -1 } },
+            ])
+            .toArray() as FrequencyByCategoryResult[];
+
+        return result;
+    }
+
+    static async getResolutionMetrics(municipalityId: string): Promise<ResolutionMetricsResult> {
+        const db = mongoDb();
+
+        const [result] = await db
+            .collection(COLLECTION_NAMES.INCIDENTS)
+            .aggregate([
+                {
+                    $match: {
+                        municipalityId: new ObjectId(municipalityId),
+                    },
+                },
+                {
+                    $facet: {
+                        overall: [
+                            {
+                                $group: {
+                                    _id: null,
+                                    totalIncidents: { $sum: 1 },
+                                    closedIncidents: {
+                                        $sum: { $cond: [{ $eq: ["$status", "closed"] }, 1, 0] },
+                                    },
+                                    resolvedIncidents: {
+                                        $sum: { $cond: [{ $eq: ["$status", "resolved"] }, 1, 0] },
+                                    },
+                                    criticalIncidents: {
+                                        $sum: { $cond: [{ $eq: ["$priority", "high"] }, 1, 0] },
+                                    },
+                                    avgResolutionTimeMs: {
+                                        $avg: {
+                                            $cond: [
+                                                { $ifNull: ["$closedAt", false] },
+                                                { $subtract: ["$closedAt", "$createdAt"] },
+                                                null,
+                                            ],
+                                        },
+                                    },
+                                },
+                            },
+                        ],
+                        byCategory: [
+                            {
+                                $group: {
+                                    _id: "$categoryId",
+                                    total: { $sum: 1 },
+                                    closed: {
+                                        $sum: { $cond: [{ $eq: ["$status", "closed"] }, 1, 0] },
+                                    },
+                                    avgResolutionTimeMs: {
+                                        $avg: {
+                                            $cond: [
+                                                { $ifNull: ["$closedAt", false] },
+                                                { $subtract: ["$closedAt", "$createdAt"] },
+                                                null,
+                                            ],
+                                        },
+                                    },
+                                },
+                            },
+                            {
+                                $lookup: {
+                                    from: COLLECTION_NAMES.CATEGORIES,
+                                    localField: "_id",
+                                    foreignField: "_id",
+                                    as: "category",
+                                },
+                            },
+                            {
+                                $unwind: {
+                                    path: "$category",
+                                    preserveNullAndEmptyArrays: true,
+                                },
+                            },
+                            {
+                                $project: {
+                                    _id: 0,
+                                    categoryId: { $toString: "$_id" },
+                                    categoryName: "$category.name",
+                                    categoryLabel: "$category.label",
+                                    total: 1,
+                                    closed: 1,
+                                    closureRate: {
+                                        $cond: [
+                                            { $gt: ["$total", 0] },
+                                            {
+                                                $round: [
+                                                    { $multiply: [{ $divide: ["$closed", "$total"] }, 100] },
+                                                    2,
+                                                ],
+                                            },
+                                            0,
+                                        ],
+                                    },
+                                    avgResolutionHours: {
+                                        $cond: [
+                                            { $ifNull: ["$avgResolutionTimeMs", false] },
+                                            {
+                                                $round: [
+                                                    { $divide: ["$avgResolutionTimeMs", 3600000] },
+                                                    2,
+                                                ],
+                                            },
+                                            null,
+                                        ],
+                                    },
+                                },
+                            },
+                            { $sort: { total: -1 } },
+                        ],
+                    },
+                },
+            ])
+            .toArray();
+
+        const overall = (result as any).overall[0];
+
+        return {
+            overall: {
+                totalIncidents: overall?.totalIncidents ?? 0,
+                closedIncidents: overall?.closedIncidents ?? 0,
+                resolvedIncidents: overall?.resolvedIncidents ?? 0,
+                criticalIncidents: overall?.criticalIncidents ?? 0,
+                closureRate: overall?.totalIncidents
+                    ? Math.round((overall.closedIncidents / overall.totalIncidents) * 10000) / 100
+                    : 0,
+                avgResolutionHours: overall?.avgResolutionTimeMs
+                    ? Math.round((overall.avgResolutionTimeMs / 3600000) * 100) / 100
+                    : null,
+            },
+            byCategory: (result as any).byCategory as ResolutionByCategoryResult[],
+        };
     }
 }

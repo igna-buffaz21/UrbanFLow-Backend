@@ -9,7 +9,7 @@ import { ImageTypes } from "../data/types/image.types";
 import { AiService } from "./ia.service";
 import { IncidentReportRepository } from "../repositorys/incident-report.repository";
 import { USER_ROLES } from "../data/types/global/const.global";
-import { IncidentPriority, IncidentFilters, ValidatedCreateIncidentInput, GetIncidentFeedInput } from "../data/types/incident/incidents.type";
+import { IncidentPriority, IncidentFilters, ValidatedCreateIncidentInput, GetIncidentFeedInput, FrequencyByCategoryResult, ResolutionMetricsResult } from "../data/types/incident/incidents.type";
 import { VALID_STATUSES, VALID_PRIORITIES, VALID_ASSIGNED_STATUSES } from "../data/types/incident/incidents.const";
 import { PendingIncidentRepository } from "../repositorys/pending-incident.repository";
 import { PendingIncident } from "../data/pending-incident.model";
@@ -529,7 +529,8 @@ export class IncidentsService {
         return await IncidentsRepository.actualizarEstado(
             new ObjectId(incidentId),
             status,
-            resolutionPhotoUrl
+            resolutionPhotoUrl,
+            status === "closed" ? authenticatedUser.id : undefined
         );
     }
 
@@ -1001,7 +1002,7 @@ export class IncidentsService {
             limit
         });
     }
-    
+
     static async getClosedIncidentsHistory(
         clerkUserId: string | null,
         page: number,
@@ -1027,5 +1028,59 @@ export class IncidentsService {
             validPage,
             validLimit
         );
+    }
+
+    static async getFrequencyStats(
+        clerkUserId: string | null,
+        municipalityId: string | null
+    ): Promise<FrequencyByCategoryResult[]> {
+        if (!clerkUserId) throw new Error("Unauthenticated user");
+
+        const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
+
+        if (![USER_ROLES.ADMIN, USER_ROLES.SUPERADMIN].includes(authenticatedUser.role)) {
+            throw new Error("Insufficient permissions");
+        }
+
+        const resolvedMunicipalityId = this.resolveMunicipalityId(authenticatedUser, municipalityId);
+
+        return IncidentsRepository.getFrequencyByCategoryStats(resolvedMunicipalityId);
+    }
+
+    static async getResolutionMetrics(
+        clerkUserId: string | null,
+        municipalityId: string | null
+    ): Promise<ResolutionMetricsResult> {
+        if (!clerkUserId) throw new Error("Unauthenticated user");
+
+        const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
+
+        if (![USER_ROLES.ADMIN, USER_ROLES.SUPERADMIN].includes(authenticatedUser.role)) {
+            throw new Error("Insufficient permissions");
+        }
+
+        const resolvedMunicipalityId = this.resolveMunicipalityId(authenticatedUser, municipalityId);
+
+        return IncidentsRepository.getResolutionMetrics(resolvedMunicipalityId);
+    }
+
+    private static resolveMunicipalityId(
+        authenticatedUser: { role: string; municipalityId?: string },
+        requestedMunicipalityId: string | null
+    ): string {
+        if (authenticatedUser.role === USER_ROLES.SUPERADMIN) {
+            const target = requestedMunicipalityId ?? authenticatedUser.municipalityId;
+            if (!target || !ObjectId.isValid(target)) {
+                throw new Error("A valid municipalityId is required");
+            }
+            return target;
+        }
+
+        // admin: siempre el suyo, ignoramos lo que venga en el param
+        if (!authenticatedUser.municipalityId || !ObjectId.isValid(authenticatedUser.municipalityId)) {
+            throw new Error("User must have a valid municipality");
+        }
+
+        return authenticatedUser.municipalityId;
     }
 }

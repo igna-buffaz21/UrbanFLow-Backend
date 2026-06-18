@@ -56,6 +56,12 @@ export interface IncidentDetailResponse {
         name: string;
         photoUrl: string | null;
     } | null;
+
+    closedBy: {
+        id: string;
+        name: string;
+        photoUrl: string | null;
+    } | null;
 };
 
 export type FindNearbyForAiParams = {
@@ -85,10 +91,45 @@ export interface GetIncidentFeedInput {
     lng: number;
     page?: number;
     limit?: number;
-}
+};
 
 export interface GetIncidentFeedRepositoryParams {
     municipalityId: string;
     page: number;
     limit: number;
+};
+
+export interface FrequencyByCategoryResult {
+    categoryId: string;
+    categoryName: string;
+    categoryLabel: string;
+    total: number;
+    open: number;
+    assigned: number;
+    resolved: number;
+    closed: number;
+};
+
+export interface ResolutionByCategoryResult {
+    categoryId: string;
+    categoryName: string;
+    categoryLabel: string;
+    total: number;
+    closed: number;
+    closureRate: number;
+    avgResolutionHours: number | null;
+};
+
+export interface ResolutionOverallResult {
+    totalIncidents: number;
+    closedIncidents: number;
+    resolvedIncidents: number;
+    criticalIncidents: number;
+    closureRate: number;
+    avgResolutionHours: number | null;
+};
+
+export interface ResolutionMetricsResult {
+    overall: ResolutionOverallResult;
+    byCategory: ResolutionByCategoryResult[];
 }
