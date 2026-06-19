@@ -247,4 +247,25 @@ export class IncidentsController {
             next(err);
         }
     }
+    static async getFrequencyStats(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { userId } = getAuth(req);
+            const municipalityId = req.params.municipalityId ?? null;
+            const data = await IncidentsService.getFrequencyStats(userId, municipalityId);
+            res.status(200).json(data);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    static async getResolutionMetrics(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { userId } = getAuth(req);
+            const municipalityId = req.params.municipalityId ?? null;
+            const data = await IncidentsService.getResolutionMetrics(userId, municipalityId);
+            res.status(200).json(data);
+        } catch (err) {
+            next(err);
+        }
+    }
 }
