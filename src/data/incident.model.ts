@@ -66,7 +66,8 @@ export interface Incident {
     image?: IncidentImage | null;
 
     municipalityId: ObjectId;
-
+    subDistrictId?: ObjectId | null;
+    
     createdBy: ObjectId;
     assignedTo?: ObjectId;
 

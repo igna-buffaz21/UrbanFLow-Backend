@@ -26,6 +26,7 @@ export interface PendingIncident {
     };
 
     municipalityId: ObjectId;
+    subDistrictId?: ObjectId | null;
 
     aiValidation: {
         confidence: number;

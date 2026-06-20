@@ -37,6 +37,20 @@ async function createIndexes(): Promise<void> {
       unique: true,
     }
   );
+
+  await db.collection("sub_districts").createIndex({
+    polygon: "2dsphere",
+  });
+
+  await db.collection("sub_districts").createIndex(
+    {
+      municipalityId: 1,
+      name: 1,
+    },
+    {
+      unique: true,
+    }
+  );
 }
 
 export function mongoDb(): Db {

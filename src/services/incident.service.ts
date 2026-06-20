@@ -13,6 +13,7 @@ import { IncidentPriority, IncidentFilters, ValidatedCreateIncidentInput, GetInc
 import { VALID_STATUSES, VALID_PRIORITIES, VALID_ASSIGNED_STATUSES } from "../data/types/incident/incidents.const";
 import { PendingIncidentRepository } from "../repositorys/pending-incident.repository";
 import { PendingIncident } from "../data/pending-incident.model";
+import { SubDistrictService } from "./sub-districts.service";
 
 function getReportBoost(reportsCount: number): number {
     if (reportsCount <= 1) return 0;
@@ -54,6 +55,16 @@ export class IncidentsService {
         if (!municipality) {
             throw new Error("No hay ningún municipio asociado a esta ubicación");
         }
+
+        const subDistrict = await SubDistrictService.findByCoordinates({
+            municipalityId: municipality.toString(),
+            lat,
+            lng,
+        });
+
+        const subDistrictId = subDistrict?.id
+            ? new ObjectId(subDistrict.id)
+            : null;
 
         const nearbyIncidents =
             await IncidentsRepository.findNearbyForAiDuplicateCheck({
@@ -123,6 +134,7 @@ export class IncidentsService {
                 },
 
                 municipalityId: new ObjectId(municipality),
+                subDistrictId,
 
                 aiValidation: this.buildAiValidation(aiResult),
 
@@ -192,6 +204,8 @@ export class IncidentsService {
             },
 
             municipalityId: new ObjectId(municipality),
+            subDistrictId,
+
             createdBy: new ObjectId(authenticatedUser.id),
 
             aiValidation: this.buildAiValidation(aiResult),
