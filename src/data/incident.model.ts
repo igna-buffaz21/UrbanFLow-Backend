@@ -19,7 +19,7 @@ export const INCIDENT_STATUS = {
     CANCELED: "canceled",
 } as const;
 
-export type IncidentPriority = "low" | "medium" | "high"; 
+export type IncidentPriority = "low" | "medium" | "high";
 
 export interface IncidentImage {
     url: string;
@@ -55,6 +55,8 @@ export interface Incident {
     categoryId: ObjectId;
 
     status: IncidentStatus;
+
+    priority: IncidentPriority;
 
     location: {
         type: "Point";

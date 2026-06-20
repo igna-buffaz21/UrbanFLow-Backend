@@ -57,11 +57,18 @@ export interface IncidentDetailResponse {
         photoUrl: string | null;
     } | null;
 
-    closedBy: {
+    closedBy?: {
         id: string;
         name: string;
         photoUrl: string | null;
     } | null;
+
+    rejectedBy?: {
+        id: string;
+        name: string;
+        photoUrl: string | null;
+    } | null;
+    rejectionReason?: string | null;
 };
 
 export type FindNearbyForAiParams = {

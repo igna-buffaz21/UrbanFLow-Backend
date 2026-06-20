@@ -193,6 +193,20 @@ export class IncidentsRepository {
                         }
                     },
                     {
+                        $lookup: {
+                            from: COLLECTION_NAMES.CATEGORIES,
+                            localField: "categoryId",
+                            foreignField: "_id",
+                            as: "category"
+                        }
+                    },
+                    {
+                        $unwind: {
+                            path: "$category",
+                            preserveNullAndEmptyArrays: true
+                        }
+                    },
+                    {
                         $project: {
                             title: 1,
                             status: 1,
@@ -206,7 +220,13 @@ export class IncidentsRepository {
                             assignedTo: {
                                 id: "$assignedOperator._id",
                                 name: "$assignedOperator.name",
-                                photoUrl: "$assignedOperator.photoUrl"
+                                photoUrl: "$assignedOperator.photoUrl",
+
+                            },
+                            category: {
+                                id: "$category._id",
+                                name: "$category.name",
+                                label: "$category.label"
                             }
                         }
                     }
@@ -238,6 +258,13 @@ export class IncidentsRepository {
                     }
                     : null,
                 location: incident.location ?? null,
+                category: incident.category?.id
+                    ? {
+                        id: incident.category.id.toString(),
+                        name: incident.category.name,
+                        label: incident.category.label
+                    }
+                    : null,
             }));
         } catch (err) {
             throw new Error("Error al obtener los incidentes: " + err);
@@ -335,7 +362,7 @@ export class IncidentsRepository {
         }
     }
 
-    static async actualizarEstado(incidentId: ObjectId, status: string, resolutionPhotoUrl?: string, closedByUserId?: string) {
+    static async actualizarEstado(incidentId: ObjectId, status: string, resolutionPhotoUrl?: string, closedByUserId?: string, rejectionReason?: string) {
         try {
             const db = mongoDb();
 
@@ -363,6 +390,16 @@ export class IncidentsRepository {
                 }
             }
 
+            if (status === "rejected") {
+                updateData.rejectedAt = new Date();
+                if (rejectionReason) {
+                    updateData.rejectionReason = rejectionReason.trim();
+                }
+                if (closedByUserId) {
+                    updateData.rejectedBy = new ObjectId(closedByUserId);
+                }
+            }
+
             if (status === "assigned") {
                 updateData.assignedAt = new Date();
             }
@@ -387,7 +424,9 @@ export class IncidentsRepository {
                 assignedAt: result.assignedAt,
                 resolvedAt: result.resolvedAt,
                 closedAt: result.closedAt,
-                updatedAt: result.updatedAt
+                updatedAt: result.updatedAt,
+                rejectedAt: result.rejectedAt,
+                rejectionReason: result.rejectionReason,
             };
         } catch (err) {
             throw new Error("Error al actualizar el estado del incidente: " + err);
@@ -511,12 +550,15 @@ export class IncidentsRepository {
                 ? new ObjectId(incident.assignedTo.toString())
                 : null;
 
-            // ← declarado antes del Promise.all
             const closedById = incident.closedBy
                 ? new ObjectId(incident.closedBy.toString())
                 : null;
 
-            const [createdBy, category, authenticatedUser, assignedTo, closedBy] = await Promise.all([
+            const rejectedById = incident.rejectedBy
+                ? new ObjectId(incident.rejectedBy.toString())
+                : null;
+
+            const [createdBy, category, authenticatedUser, assignedTo, closedBy, rejectedBy] = await Promise.all([
                 createdById
                     ? db.collection(COLLECTION_NAMES.USERS).findOne({ _id: createdById })
                     : Promise.resolve(null),
@@ -532,6 +574,10 @@ export class IncidentsRepository {
                 closedById
                     ? db.collection(COLLECTION_NAMES.USERS).findOne({ _id: closedById })
                     : Promise.resolve(null),
+                rejectedById
+                    ? db.collection(COLLECTION_NAMES.USERS).findOne({ _id: rejectedById })
+                    : Promise.resolve(null),
+
             ]);
 
             const isOwner =
@@ -579,6 +625,14 @@ export class IncidentsRepository {
                         photoUrl: closedBy.photoUrl || null,
                     }
                     : null,
+                rejectedBy: rejectedBy
+                    ? {
+                        id: rejectedBy._id.toString(),
+                        name: rejectedBy.name,
+                        photoUrl: rejectedBy.photoUrl || null,
+                    }
+                    : null,
+                rejectionReason: incident.rejectionReason || null,
             };
         } catch (err) {
             throw new Error("Error al obtener el detalle del incidente: " + err);
@@ -820,7 +874,7 @@ export class IncidentsRepository {
                     {
                         $match: {
                             municipalityId: new ObjectId(municipalityId),
-                            status: "closed",
+                            status: { $in: ["closed", "rejected"] },
                         },
                     },
                     {
