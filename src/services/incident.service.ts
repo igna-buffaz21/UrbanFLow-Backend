@@ -182,6 +182,8 @@ export class IncidentsService {
 
             status: "open",
 
+            priority: this.mapUrgencyScoreToPriority(aiResult.aiUrgencyScore),
+
             location,
 
             image: {
@@ -445,7 +447,8 @@ export class IncidentsService {
         clerkUserId: string | null,
         incidentId: string,
         status: string,
-        image?: Express.Multer.File
+        image?: Express.Multer.File,
+        rejectionReason?: string
     ) {
         if (!clerkUserId) {
             throw new Error("Usuario no autenticado");
@@ -477,6 +480,15 @@ export class IncidentsService {
                 incident.municipalityId.toString() !== authenticatedUser.municipalityId
             ) {
                 throw new Error("No podés modificar incidentes de otro municipio");
+            }
+        }
+
+        if (status === "rejected") {
+            if (!["open", "in_review"].includes(incident.status)) {
+                throw new Error("Solo podés rechazar incidentes abiertos o en revisión");
+            }
+            if (!rejectionReason || rejectionReason.trim() === "") {
+                throw new Error("El motivo de rechazo es obligatorio");
             }
         }
 
@@ -530,7 +542,8 @@ export class IncidentsService {
             new ObjectId(incidentId),
             status,
             resolutionPhotoUrl,
-            status === "closed" ? authenticatedUser.id : undefined
+            status === "closed" || status === "rejected" ? authenticatedUser.id : undefined,
+            status === "rejected" ? rejectionReason : undefined,
         );
     }
 
@@ -682,6 +695,12 @@ export class IncidentsService {
             priorityScore,
             priority,
         };
+    }
+
+    private static mapUrgencyScoreToPriority(score: number): IncidentPriority {
+        if (score <= 2) return "low";
+        if (score <= 4) return "medium";
+        return "high";
     }
 
     private static buildAiValidation(aiResult: any) {
@@ -889,6 +908,22 @@ export class IncidentsService {
                 createdAt: new Date(),
             });
 
+            const updatedReportsCount = await IncidentReportRepository.countReportsByIncidentId(
+                duplicateIncidentId.toString()
+            );
+
+            const originalIncident = await IncidentsRepository.getIncidentById(duplicateIncidentId);
+
+            const newPriorityScore = calculatePriorityScore({
+                aiUrgencyScore: originalIncident?.aiValidation?.aiUrgencyScore ?? 1,
+                reportsCount: updatedReportsCount,
+            });
+
+            await IncidentsRepository.actualizarPrioridad(
+                duplicateIncidentId,
+                getPriorityFromScore(newPriorityScore)
+            );
+
             await PendingIncidentRepository.deletePendingIncidentById(
                 pendingIncident._id
             );
@@ -917,6 +952,10 @@ export class IncidentsService {
                 categoryId: new ObjectId(pendingIncident.categoryId),
 
                 status: "open",
+
+                priority: this.mapUrgencyScoreToPriority(
+                    pendingIncident.aiValidation?.aiUrgencyScore ?? 1
+                ),
 
                 location: pendingIncident.location,
 

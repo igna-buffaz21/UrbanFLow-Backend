@@ -111,12 +111,14 @@ export class IncidentsController {
 
             const incidentId = req.params.id;
             const status = req.body.status;
+            const rejectionReason = req.body.rejectionReason;
 
             const incident = await IncidentsService.actualizarEstado(
                 userId,
                 incidentId,
                 status,
-                req.file
+                req.file,
+                rejectionReason
             );
 
             res.json(incident);
