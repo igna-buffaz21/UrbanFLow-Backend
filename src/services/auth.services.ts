@@ -112,7 +112,8 @@ export class AuthService {
             photoUrl: user.photoUrl,
             role: user.role,
             status: user.status,
-            municipalityId: user.municipalityId?.toString()
+            municipalityId: user.municipalityId?.toString(),
+            isProfileCompleted: user.isProfileCompleted ?? false
         };
     }
 }

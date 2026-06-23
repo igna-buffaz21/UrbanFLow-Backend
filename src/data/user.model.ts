@@ -21,4 +21,14 @@ export interface User {
 
     createdAt: Date;
     updatedAt: Date;
+
+    dni?: string;
+    phone?: string;
+    address?: string;
+    province?: string;
+    city?: string;
+    subDistrict?: string;
+    postalCode?: string;
+    isProfileCompleted?: boolean;
 }
+

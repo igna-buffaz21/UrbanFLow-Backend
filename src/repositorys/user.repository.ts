@@ -15,7 +15,7 @@ export class UserRepository {
                 ...user,
                 _id: result.insertedId
             };
-        } 
+        }
         catch (err) {
             throw new Error("Error al crear el usuario: " + err);
         }
@@ -28,7 +28,7 @@ export class UserRepository {
             return await db.collection<User>(COLLECTION_NAMES.USERS).findOne({
                 clerkId
             });
-        } 
+        }
         catch (err) {
             throw new Error("Error al obtener el usuario por Clerk ID: " + err);
         }
@@ -41,7 +41,7 @@ export class UserRepository {
             return await db.collection<User>(COLLECTION_NAMES.USERS).findOne({
                 email
             });
-        } 
+        }
         catch (err) {
             throw new Error("Error al obtener el usuario por email: " + err);
         }
@@ -52,24 +52,24 @@ export class UserRepository {
             const db = mongoDb();
 
             return await db.collection<User>(COLLECTION_NAMES.USERS).findOne({ _id: id });
-        } 
+        }
         catch (err) {
             throw new Error("Error al obtener el usuario por ID: " + err);
         }
     }
 
     static async getPendingUserByEmail(email: string): Promise<User | null> {
-    try {
-        const db = mongoDb();
+        try {
+            const db = mongoDb();
 
-        return await db.collection<User>(COLLECTION_NAMES.USERS).findOne({
-            email,
-            status: "pending"
-        });
-    } 
-    catch (err) {
-        throw new Error("Error al obtener el usuario pendiente por email: " + err);
-    }
+            return await db.collection<User>(COLLECTION_NAMES.USERS).findOne({
+                email,
+                status: "pending"
+            });
+        }
+        catch (err) {
+            throw new Error("Error al obtener el usuario pendiente por email: " + err);
+        }
     }
 
     static async activatePendingUser(
@@ -98,7 +98,7 @@ export class UserRepository {
             );
 
             return result;
-        } 
+        }
         catch (err) {
             throw new Error("Error al activar el usuario pendiente: " + err);
         }
@@ -168,11 +168,41 @@ export class UserRepository {
                     }
                 ])
                 .toArray();
-        } 
+        }
         catch (err) {
             throw new Error("Error al obtener los usuarios: " + err);
         }
     }
+
+
+    static async updateMyProfile(clerkId: string, data: Partial<User>): Promise<User | null> {
+        try {
+            const db = mongoDb();
+
+            return await db.collection<User>(COLLECTION_NAMES.USERS).findOneAndUpdate(
+                { clerkId },
+                { $set: data },
+                { returnDocument: "after" }
+            );
+        }
+        catch (err) {
+            throw new Error("Error al actualizar el perfil del usuario: " + err);
+        }
+
+    }
+
+    static async getUserByDni(dni: string): Promise<User | null> {
+    try {
+        const db = mongoDb();
+
+        return await db.collection<User>(COLLECTION_NAMES.USERS).findOne({
+            dni
+        });
+    } 
+    catch (err) {
+        throw new Error("Error al obtener el usuario por DNI: " + err);
+    }
+}
 
     static async updateUserStatus(id: ObjectId, status: UserStatus): Promise<User | null> {
         try {
@@ -192,7 +222,7 @@ export class UserRepository {
             );
 
             return updatedUser;
-        } 
+        }
         catch (err) {
             throw new Error("Error al actualizar el estado del usuario: " + err);
         }
