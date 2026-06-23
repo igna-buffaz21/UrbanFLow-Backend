@@ -28,6 +28,16 @@ async function createIndexes(): Promise<void> {
     municipalityId: 1,
   });
 
+  await db.collection("incidents").createIndex(
+    { publicCode: 1 },
+    {
+      unique: true,
+      partialFilterExpression: {
+        publicCode: { $exists: true },
+      },
+    }
+  );
+
   await db.collection("incident_reports").createIndex(
     {
       incidentId: 1,
