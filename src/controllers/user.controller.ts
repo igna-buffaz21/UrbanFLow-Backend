@@ -3,13 +3,13 @@ import { UserService } from "../services/user.service";
 import { getAuth } from "@clerk/express";
 
 
-export class UsersController {    
+export class UsersController {
     static async createUser(req: Request, res: Response, next: NextFunction) {
         try {
             const user = await UserService.createUser(req.body);
 
             return res.status(201).json(user);
-        } 
+        }
         catch (err) {
             next(err);
         }
@@ -28,7 +28,7 @@ export class UsersController {
             const invitedUser = await UserService.inviteUser(auth.userId, req.body);
 
             return res.status(201).json(invitedUser);
-        } 
+        }
         catch (err) {
             next(err);
         }
@@ -36,20 +36,33 @@ export class UsersController {
 
     static async getUsers(req: Request, res: Response, next: NextFunction) {
         try {
-            
+
             const { userId } = getAuth(req);
 
-            
+
             if (!userId) {
                 return res.status(401).json({
                     message: "Usuario no autenticado"
                 });
-            } 
+            }
 
             const users = await UserService.getUsers(userId, req.query);
 
             return res.json(users);
-        } 
+        }
+        catch (err) {
+            next(err);
+        }
+    }
+
+    static async updateMyProfile(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { userId } = getAuth(req);
+
+            const updatedUser = await UserService.updateMyProfile(userId, req.body);
+
+            res.json(updatedUser);
+        }
         catch (err) {
             next(err);
         }
@@ -67,7 +80,7 @@ export class UsersController {
             });
 
             return res.json(status);
-        } 
+        }
         catch (err) {
             next(err);
         }
@@ -84,7 +97,7 @@ export class UsersController {
             });
 
             return res.json(updatedUserStatus);
-        } 
+        }
         catch (err) {
             next(err);
         }
@@ -100,7 +113,7 @@ export class UsersController {
             });
 
             return res.json(user);
-        } 
+        }
         catch (err) {
             next(err);
         }
