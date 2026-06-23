@@ -46,6 +46,8 @@ export interface IncidentAiValidation {
 export interface Incident {
     _id?: ObjectId;
 
+    publicCode: string;
+
     title: string;
     description?: string;
 

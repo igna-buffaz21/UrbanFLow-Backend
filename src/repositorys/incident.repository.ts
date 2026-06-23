@@ -588,21 +588,28 @@ export class IncidentsRepository {
 
             return {
                 id: incident._id.toString(),
+                publicCode: incident.publicCode,
                 title: incident.title,
                 description: incident.description,
                 photoUrl: incident.image?.url || null,
                 resolutionPhotoUrl: incident.resolutionPhotoUrl || null,
-                resolvedAt: incident.resolvedAt || null,
                 location: incident.location
                     ? { type: "Point", coordinates: incident.location.coordinates }
                     : null,
                 category: category
-                    ? { id: category._id.toString(), name: category.name }
+                    ? { id: category._id.toString(), name: category.label }
                     : null,
                 priority: incident.priority,
                 status: incident.status,
                 aiUrgencyScore,
+
                 createdAt: incident.createdAt,
+                assignedAt: incident.assignedAt || null,
+                startedAt: incident.startedAt || null,
+                resolvedAt: incident.resolvedAt || null,
+                closedAt: incident.closedAt || null,
+                rejectedAt: incident.rejectedAt || null,
+
                 is_owner: isOwner,
                 createdBy: createdBy
                     ? {
@@ -1133,5 +1140,11 @@ export class IncidentsRepository {
             },
             byCategory: (result as any).byCategory as ResolutionByCategoryResult[],
         };
+    }
+
+    static async findByPublicCode(publicCode: string) {
+        return await mongoDb()
+            .collection("incidents")
+            .findOne({ publicCode });
     }
 }

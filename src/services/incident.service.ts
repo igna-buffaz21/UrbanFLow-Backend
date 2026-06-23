@@ -169,6 +169,8 @@ export class IncidentsService {
 
         const incidentId = new ObjectId();
 
+        const publicCode = await this.generateUniqueIncidentPublicCode();
+
         const processedImage = await ImageService.processImage(validatedImage);
 
         const publicId = ImageTypes.buildIncidentImageName(
@@ -181,8 +183,12 @@ export class IncidentsService {
                 publicId
             );
 
+        const now = new Date();
+
         const newIncident = {
             _id: incidentId,
+
+            publicCode,
 
             title: aiResult.normalizedTitle,
             description: aiResult.normalizedDescription,
@@ -210,8 +216,8 @@ export class IncidentsService {
 
             aiValidation: this.buildAiValidation(aiResult),
 
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            createdAt: now,
+            updatedAt: now,
         };
 
         const incident = await IncidentsRepository.createIncident(newIncident);
@@ -1133,4 +1139,18 @@ export class IncidentsService {
 
         return authenticatedUser.municipalityId;
     }
+
+    private static async generateUniqueIncidentPublicCode(): Promise<string> {
+    while (true) {
+        const randomNumber = Math.floor(10000 + Math.random() * 90000);
+        const publicCode = `INC-${randomNumber}`;
+
+        const existingIncident =
+            await IncidentsRepository.findByPublicCode(publicCode);
+
+        if (!existingIncident) {
+            return publicCode;
+        }
+    }
+}
 }

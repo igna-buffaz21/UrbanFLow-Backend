@@ -8,64 +8,63 @@ import { COLLECTION_NAMES } from "../data/types/global/const.global";
 export class IncidentCommentRepository {
 
     static async getMyComments(
-        requesterId: string
-        ): Promise<MyIncidentCommentResponse[]> {
-        try {
-            const db = mongoDb();
+    requesterId: string
+    ): Promise<MyIncidentCommentResponse[]> {
+    try {
+        const db = mongoDb();
 
-            const comments = await db
-            .collection<IncidentComment>(COLLECTION_NAMES.INCIDENT_COMMENTS)
-            .aggregate([
-                {
-                $match: {
-                    createdBy: new ObjectId(requesterId),
-                    status: {
-                    $ne: "deleted",
-                    },
+        const comments = await db
+        .collection<IncidentComment>(COLLECTION_NAMES.INCIDENT_COMMENTS)
+        .aggregate([
+            {
+            $match: {
+                createdBy: new ObjectId(requesterId),
+                status: {
+                $ne: "deleted",
                 },
-                },
-                {
-                $lookup: {
-                    from: "incidents",
-                    localField: "incidentId",
-                    foreignField: "_id",
-                    as: "incidentData",
-                },
-                },
-                {
-                $unwind: "$incidentData",
-                },
-                {
-                $sort: {
-                    createdAt: -1,
-                },
-                },
-                {
-                $project: {
-                    _id: 0,
-                    commentId: { $toString: "$_id" },
-                    comment: 1,
-                    photoUrl: 1,
-                    status: 1,
-                    commentedAt: "$createdAt",
-                    updatedAt: 1,
-                    incident: {
-                    id: { $toString: "$incidentData._id" },
-                    title: "$incidentData.title",
-                    description: "$incidentData.description",
-                    status: "$incidentData.status",
-                    priority: "$incidentData.priority",
-                    photoUrl: {
-                        $ifNull: ["$incidentData.image.url", null],
-                    },
-                    createdAt: "$incidentData.createdAt",
-                    },
-                },
-                },
-            ])
-            .toArray();
+            },
+            },
+            {
+            $lookup: {
+                from: "incidents",
+                localField: "incidentId",
+                foreignField: "_id",
+                as: "incidentData",
+            },
+            },
+            {
+            $unwind: "$incidentData",
+            },
+            {
+            $sort: {
+                createdAt: -1,
+            },
+            },
+            {
+            $project: {
+                _id: 0,
 
-            return comments as unknown as MyIncidentCommentResponse[];
+                commentId: {
+                $toString: "$_id",
+                },
+
+                incidentId: {
+                $toString: "$incidentId",
+                },
+
+                comment: 1,
+                photoUrl: 1,
+                status: 1,
+
+                commentedAt: "$createdAt",
+
+                incidentTitle: "$incidentData.title",
+            },
+            },
+        ])
+        .toArray();
+
+        return comments as unknown as MyIncidentCommentResponse[];
     } catch (err) {
         throw new Error(`Error al obtener mis comentarios: ${err}`);
     }

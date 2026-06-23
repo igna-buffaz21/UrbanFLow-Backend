@@ -91,14 +91,13 @@ export class IncidentCommentController {
         try {
             const { userId } = getAuth(req);
             const { id } = req.params;
-            const { status } = req.body;
 
             const requester = await AuthService.getAuthenticatedUser(userId!);
 
             const updated = await IncidentCommentService.updateCommentStatus(
                 id,
                 requester.id!,
-                status
+                "deleted"
             );
 
             res.status(200).json(updated);
