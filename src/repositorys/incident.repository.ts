@@ -86,12 +86,18 @@ export class IncidentsRepository {
                 $or: [
                     { createdBy: citizenId },
                     { createdBy: new ObjectId(citizenId) }
-                ]
+                ],
+                status: {
+                    $ne: "canceled"
+                }
             };
 
-            if (status) query.status = status;
+            if (status && status !== "canceled") {
+                query.status = status;
+            }
 
-            const incidents = await db.collection(COLLECTION_NAMES.INCIDENTS)
+            const incidents = await db
+                .collection(COLLECTION_NAMES.INCIDENTS)
                 .find(query)
                 .project({
                     title: 1,

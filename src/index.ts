@@ -23,6 +23,7 @@ import incidentCommentRoutes from "./routers/incident.comment.router";
 import incidentReportRoutes from "./routers/incident-report.router";
 import iaRouterDev from "./routers/ia.router.dev";
 import subDistrictsRoutes from "./routers/sub-districts.router";
+import webhookRoutes from "./routers/webhook.router";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -38,6 +39,8 @@ app.use(
     ],
   })
 );
+
+app.use("/webhooks", express.raw({ type: "application/json" }), webhookRoutes);
 
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));

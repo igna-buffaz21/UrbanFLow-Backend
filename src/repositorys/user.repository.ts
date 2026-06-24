@@ -202,7 +202,7 @@ export class UserRepository {
     catch (err) {
         throw new Error("Error al obtener el usuario por DNI: " + err);
     }
-}
+    }
 
     static async updateUserStatus(id: ObjectId, status: UserStatus): Promise<User | null> {
         try {
@@ -225,6 +225,20 @@ export class UserRepository {
         }
         catch (err) {
             throw new Error("Error al actualizar el estado del usuario: " + err);
+        }
+    }
+
+    static async updateByClerkId(clerkId: string, data: Partial<User>): Promise<User | null> {
+        try {
+            const db = mongoDb();
+
+            return await db.collection<User>(COLLECTION_NAMES.USERS).findOneAndUpdate(
+            { clerkId },
+            { $set: data },
+            { returnDocument: "after" }
+            );
+        } catch (err) {
+            throw new Error("Error al sincronizar usuario desde Clerk: " + err);
         }
     }
 
