@@ -1,7 +1,7 @@
 import { ObjectId } from "mongodb";
 import { mongoDb } from "../config/mongodb.config";
 import { NearbyIncidentForAi } from "../data/types/ia/ia.type";
-import { IncidentDetailResponse, GetMapParams, IncidentFilters, FindNearbyForAiParams, GetIncidentFeedRepositoryParams, FrequencyByCategoryResult, ResolutionByCategoryResult, ResolutionMetricsResult, } from "../data/types/incident/incidents.type";
+import { IncidentDetailResponse, GetMapParams, IncidentFilters, FindNearbyForAiParams, GetIncidentFeedRepositoryParams, FrequencyByCategoryResult, ResolutionByCategoryResult, ResolutionMetricsResult, GeographicStatItem, GeographicStatsResult, TemporalStatItem, OperatorStatItem, PriorityStatItem, ExtendedStatsResult, } from "../data/types/incident/incidents.type";
 import { COLLECTION_NAMES } from "../data/types/global/const.global";
 import { INCIDENT_STATUS } from "../data/incident.model";
 
@@ -367,6 +367,34 @@ export class IncidentsRepository {
             };
         } catch (err) {
             throw new Error("Error al asignar el operador: " + err);
+        }
+    }
+
+    static async desasignarOperador(incidentId: ObjectId) {
+        try {
+            const db = mongoDb();
+
+            const result = await db.collection(COLLECTION_NAMES.INCIDENTS).findOneAndUpdate(
+                { _id: incidentId },
+                {
+                    $set: { status: "open", updatedAt: new Date() },
+                    $unset: { assignedTo: "", assignedAt: "" }
+                },
+                { returnDocument: "after" }
+            );
+
+            if (!result) {
+                throw new Error("No se pudo desasignar el operador");
+            }
+
+            return {
+                id: result._id.toString(),
+                title: result.title,
+                status: result.status,
+                priority: result.priority
+            };
+        } catch (err) {
+            throw new Error("Error al desasignar el operador: " + err);
         }
     }
 
@@ -968,22 +996,33 @@ export class IncidentsRepository {
                 },
                 {
                     $group: {
-                        _id: "$categoryId",
+                        _id: {
+                            $cond: [
+                                { $eq: [{ $type: "$categoryId" }, "string"] },
+                                { $toObjectId: "$categoryId" },
+                                "$categoryId",
+                            ],
+                        },
                         total: { $sum: 1 },
-                        open: {
-                            $sum: { $cond: [{ $eq: ["$status", "open"] }, 1, 0] },
-                        },
-                        assigned: {
-                            $sum: { $cond: [{ $eq: ["$status", "assigned"] }, 1, 0] },
-                        },
-                        resolved: {
-                            $sum: { $cond: [{ $eq: ["$status", "resolved"] }, 1, 0] },
-                        },
-                        closed: {
-                            $sum: { $cond: [{ $eq: ["$status", "closed"] }, 1, 0] },
-                        },
+                        open: { $sum: { $cond: [{ $eq: ["$status", "open"] }, 1, 0] } },
+                        assigned: { $sum: { $cond: [{ $eq: ["$status", "assigned"] }, 1, 0] } },
+                        resolved: { $sum: { $cond: [{ $eq: ["$status", "resolved"] }, 1, 0] } },
+                        closed: { $sum: { $cond: [{ $eq: ["$status", "closed"] }, 1, 0] } },
                     },
                 },
+
+                {
+                    $addFields: {
+                        _id: {
+                            $cond: [
+                                { $eq: [{ $type: "$_id" }, "objectId"] },
+                                "$_id",
+                                { $toObjectId: "$_id" }
+                            ]
+                        }
+                    }
+                },
+
                 {
                     $lookup: {
                         from: COLLECTION_NAMES.CATEGORIES,
@@ -1002,8 +1041,12 @@ export class IncidentsRepository {
                     $project: {
                         _id: 0,
                         categoryId: { $toString: "$_id" },
-                        categoryName: "$category.name",
-                        categoryLabel: "$category.label",
+                        categoryName: {
+                            $ifNull: ["$category.name", "Sin categoría"]
+                        },
+                        categoryLabel: {
+                            $ifNull: ["$category.label", "Sin categoría"]
+                        },
                         total: 1,
                         open: 1,
                         assigned: 1,
@@ -1156,3 +1199,224 @@ export class IncidentsRepository {
             .findOne({ publicCode });
     }
 }
+
+    static async getGeographicStats(municipalityId: string): Promise<GeographicStatsResult> {
+        const db = mongoDb();
+
+        const [result] = await db
+            .collection(COLLECTION_NAMES.INCIDENTS)
+            .aggregate([
+                {
+                    $match: {
+                        municipalityId: new ObjectId(municipalityId),
+                    },
+                },
+                {
+                    $facet: {
+                        withSubDistrict: [
+                            {
+                                $match: {
+                                    subDistrictId: { $exists: true, $ne: null },
+                                },
+                            },
+                            {
+                                $group: {
+                                    _id: "$subDistrictId",
+                                    total: { $sum: 1 },
+                                    open: { $sum: { $cond: [{ $eq: ["$status", "open"] }, 1, 0] } },
+                                    assigned: { $sum: { $cond: [{ $eq: ["$status", "assigned"] }, 1, 0] } },
+                                    resolved: { $sum: { $cond: [{ $eq: ["$status", "resolved"] }, 1, 0] } },
+                                    closed: { $sum: { $cond: [{ $eq: ["$status", "closed"] }, 1, 0] } },
+                                    high: { $sum: { $cond: [{ $eq: ["$priority", "high"] }, 1, 0] } },
+                                    medium: { $sum: { $cond: [{ $eq: ["$priority", "medium"] }, 1, 0] } },
+                                    low: { $sum: { $cond: [{ $eq: ["$priority", "low"] }, 1, 0] } },
+                                },
+                            },
+                            {
+                                $lookup: {
+                                    from: COLLECTION_NAMES.SUB_DISTRICTS,
+                                    localField: "_id",
+                                    foreignField: "_id",
+                                    as: "subDistrict",
+                                },
+                            },
+                            {
+                                $unwind: {
+                                    path: "$subDistrict",
+                                    preserveNullAndEmptyArrays: true,
+                                },
+                            },
+                            {
+                                $project: {
+                                    _id: 0,
+                                    subDistrictId: { $toString: "$_id" },
+                                    subDistrictName: "$subDistrict.name",
+                                    total: 1,
+                                    open: 1,
+                                    assigned: 1,
+                                    resolved: 1,
+                                    closed: 1,
+                                    high: 1,
+                                    medium: 1,
+                                    low: 1,
+                                },
+                            },
+                            { $sort: { total: -1 } },
+                        ],
+                        withoutSubDistrict: [
+                            {
+                                $match: {
+                                    $or: [
+                                        { subDistrictId: { $exists: false } },
+                                        { subDistrictId: null },
+                                    ],
+                                },
+                            },
+                            { $count: "count" },
+                        ],
+                    },
+                },
+            ])
+            .toArray();
+
+        return {
+            withSubDistrict: (result as any).withSubDistrict as GeographicStatItem[],
+            withoutSubDistrict: (result as any).withoutSubDistrict[0]?.count ?? 0,
+        };
+    }
+
+    static async getExtendedStats(municipalityId: string): Promise<ExtendedStatsResult> {
+        const db = mongoDb();
+
+        const [result] = await db
+            .collection(COLLECTION_NAMES.INCIDENTS)
+            .aggregate([
+                {
+                    $match: {
+                        municipalityId: new ObjectId(municipalityId),
+                    },
+                },
+                {
+                    $facet: {
+                        temporal: [
+                            {
+                                $group: {
+                                    _id: {
+                                        year: { $year: "$createdAt" },
+                                        month: { $month: "$createdAt" },
+                                    },
+                                    total: { $sum: 1 },
+                                    open: { $sum: { $cond: [{ $eq: ["$status", "open"] }, 1, 0] } },
+                                    resolved: { $sum: { $cond: [{ $eq: ["$status", "resolved"] }, 1, 0] } },
+                                    closed: { $sum: { $cond: [{ $eq: ["$status", "closed"] }, 1, 0] } },
+                                },
+                            },
+                            { $sort: { "_id.year": 1, "_id.month": 1 } },
+                            {
+                                $project: {
+                                    _id: 0,
+                                    period: {
+                                        $concat: [
+                                            { $toString: "$_id.year" },
+                                            "-",
+                                            {
+                                                $cond: [
+                                                    { $lt: ["$_id.month", 10] },
+                                                    { $concat: ["0", { $toString: "$_id.month" }] },
+                                                    { $toString: "$_id.month" },
+                                                ],
+                                            },
+                                        ],
+                                    },
+                                    total: 1,
+                                    open: 1,
+                                    resolved: 1,
+                                    closed: 1,
+                                },
+                            },
+                        ],
+                        byOperator: [
+                            {
+                                $match: {
+                                    assignedTo: { $exists: true, $ne: null },
+                                },
+                            },
+                            {
+                                $group: {
+                                    _id: "$assignedTo",
+                                    total: { $sum: 1 },
+                                    resolved: { $sum: { $cond: [{ $eq: ["$status", "resolved"] }, 1, 0] } },
+                                    closed: { $sum: { $cond: [{ $eq: ["$status", "closed"] }, 1, 0] } },
+                                    avgResolutionTimeMs: {
+                                        $avg: {
+                                            $cond: [
+                                                { $ifNull: ["$closedAt", false] },
+                                                { $subtract: ["$closedAt", "$createdAt"] },
+                                                null,
+                                            ],
+                                        },
+                                    },
+                                },
+                            },
+                            {
+                                $lookup: {
+                                    from: COLLECTION_NAMES.USERS,
+                                    localField: "_id",
+                                    foreignField: "_id",
+                                    as: "operator",
+                                },
+                            },
+                            {
+                                $unwind: {
+                                    path: "$operator",
+                                    preserveNullAndEmptyArrays: true,
+                                },
+                            },
+                            {
+                                $project: {
+                                    _id: 0,
+                                    operatorId: { $toString: "$_id" },
+                                    operatorName: { $ifNull: ["$operator.name", "Sin nombre"] },
+                                    total: 1,
+                                    resolved: 1,
+                                    closed: 1,
+                                    avgResolutionHours: {
+                                        $cond: [
+                                            { $ifNull: ["$avgResolutionTimeMs", false] },
+                                            { $round: [{ $divide: ["$avgResolutionTimeMs", 3600000] }, 2] },
+                                            null,
+                                        ],
+                                    },
+                                },
+                            },
+                            { $sort: { total: -1 } },
+                        ],
+                        byPriority: [
+                            {
+                                $group: {
+                                    _id: "$priority",
+                                    total: { $sum: 1 },
+                                },
+                            },
+                            {
+                                $project: {
+                                    _id: 0,
+                                    priority: "$_id",
+                                    total: 1,
+                                },
+                            },
+                            { $sort: { total: -1 } },
+                        ],
+                    },
+                },
+            ])
+            .toArray();
+
+        return {
+            temporal: (result as any).temporal as TemporalStatItem[],
+            byOperator: (result as any).byOperator as OperatorStatItem[],
+            byPriority: (result as any).byPriority as PriorityStatItem[],
+        };
+    }
+}
+

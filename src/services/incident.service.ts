@@ -9,7 +9,7 @@ import { ImageTypes } from "../data/types/image.types";
 import { AiService } from "./ia.service";
 import { IncidentReportRepository } from "../repositorys/incident-report.repository";
 import { USER_ROLES } from "../data/types/global/const.global";
-import { IncidentPriority, IncidentFilters, ValidatedCreateIncidentInput, GetIncidentFeedInput, FrequencyByCategoryResult, ResolutionMetricsResult } from "../data/types/incident/incidents.type";
+import { IncidentPriority, IncidentFilters, ValidatedCreateIncidentInput, GetIncidentFeedInput, FrequencyByCategoryResult, ResolutionMetricsResult, GeographicStatsResult, ExtendedStatsResult } from "../data/types/incident/incidents.type";
 import { VALID_STATUSES, VALID_PRIORITIES, VALID_ASSIGNED_STATUSES } from "../data/types/incident/incidents.const";
 import { PendingIncidentRepository } from "../repositorys/pending-incident.repository";
 import { PendingIncident } from "../data/pending-incident.model";
@@ -461,6 +461,50 @@ export class IncidentsService {
             new ObjectId(incidentId),
             new ObjectId(operatorId)
         );
+    }
+
+    static async desasignarOperador(clerkUserId: string | null, incidentId: string) {
+        if (!clerkUserId) {
+            throw new Error("Usuario no autenticado");
+        }
+
+        const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
+
+        if (authenticatedUser.role !== USER_ROLES.ADMIN) {
+            throw new Error("Solo los administradores pueden desasignar operadores");
+        }
+
+        if (!authenticatedUser.municipalityId || !ObjectId.isValid(authenticatedUser.municipalityId)) {
+            throw new Error("El administrador debe tener un municipio válido asociado");
+        }
+
+        if (!incidentId || !ObjectId.isValid(incidentId)) {
+            throw new Error("El incidente es inválido");
+        }
+
+        const incident = await IncidentsRepository.getIncidentById(new ObjectId(incidentId));
+
+        if (!incident) {
+            throw new Error("El incidente no existe");
+        }
+
+        if (!incident.municipalityId) {
+            throw new Error("El incidente no tiene municipio asignado");
+        }
+
+        if (incident.municipalityId.toString() !== authenticatedUser.municipalityId) {
+            throw new Error("No podés desasignar incidentes de otro municipio");
+        }
+
+        if (incident.status !== "assigned") {
+            throw new Error("Solo se pueden desasignar incidentes en estado asignado");
+        }
+
+        if (!incident.assignedTo) {
+            throw new Error("Este incidente no tiene un operador asignado");
+        }
+
+        return await IncidentsRepository.desasignarOperador(new ObjectId(incidentId));
     }
 
     static async actualizarEstado(
@@ -1145,6 +1189,23 @@ export class IncidentsService {
         return IncidentsRepository.getResolutionMetrics(resolvedMunicipalityId);
     }
 
+    static async getGeographicStats(
+        clerkUserId: string | null,
+        municipalityId: string | null
+    ): Promise<GeographicStatsResult> {
+        if (!clerkUserId) throw new Error("Unauthenticated user");
+
+        const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
+
+        if (![USER_ROLES.ADMIN, USER_ROLES.SUPERADMIN].includes(authenticatedUser.role)) {
+            throw new Error("Insufficient permissions");
+        }
+
+        const resolvedMunicipalityId = this.resolveMunicipalityId(authenticatedUser, municipalityId);
+
+        return IncidentsRepository.getGeographicStats(resolvedMunicipalityId);
+    }
+
     private static resolveMunicipalityId(
         authenticatedUser: { role: string; municipalityId?: string },
         requestedMunicipalityId: string | null
@@ -1165,6 +1226,7 @@ export class IncidentsService {
         return authenticatedUser.municipalityId;
     }
 
+<<<<<<< HEAD
     private static async generateUniqueIncidentPublicCode(): Promise<string> {
     while (true) {
         const randomNumber = Math.floor(10000 + Math.random() * 90000);
@@ -1178,4 +1240,22 @@ export class IncidentsService {
         }
     }
 }
+=======
+    static async getExtendedStats(
+        clerkUserId: string | null,
+        municipalityId: string | null
+    ): Promise<ExtendedStatsResult> {
+        if (!clerkUserId) throw new Error("Unauthenticated user");
+
+        const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
+
+        if (![USER_ROLES.ADMIN, USER_ROLES.SUPERADMIN].includes(authenticatedUser.role)) {
+            throw new Error("Insufficient permissions");
+        }
+
+        const resolvedMunicipalityId = this.resolveMunicipalityId(authenticatedUser, municipalityId);
+
+        return IncidentsRepository.getExtendedStats(resolvedMunicipalityId);
+    }
+>>>>>>> b9a7001 (agregue nuevos endpointsp para estadisticas)
 }
