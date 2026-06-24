@@ -559,6 +559,18 @@ export class IncidentsRepository {
         }
     }
 
+    static async findByPublicCode(publicCode: string) {
+        try {
+            const db = mongoDb();
+
+            return await db.collection(COLLECTION_NAMES.INCIDENTS).findOne({
+                publicCode
+            });
+        } catch (err) {
+            throw new Error("Error al buscar el incidente por código público: " + err);
+        }
+    }
+
     static async getDetailById(
         incidentId: ObjectId,
         clerkUserId: string | null
