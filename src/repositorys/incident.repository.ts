@@ -144,7 +144,8 @@ export class IncidentsRepository {
                     title: 1,
                     status: 1,
                     priority: 1,
-                    assignedAt: 1
+                    assignedAt: 1,
+                    image: 1
                 })
                 .toArray();
 
@@ -153,7 +154,8 @@ export class IncidentsRepository {
                 title: incident.title,
                 status: incident.status,
                 priority: incident.priority,
-                assignedAt: incident.assignedAt
+                assignedAt: incident.assignedAt,
+                photoUrl: incident.image?.url || null
             }));
         } catch (err) {
             throw new Error("Error al obtener los incidentes asignados: " + err);
