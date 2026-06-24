@@ -139,4 +139,50 @@ export interface ResolutionOverallResult {
 export interface ResolutionMetricsResult {
     overall: ResolutionOverallResult;
     byCategory: ResolutionByCategoryResult[];
+};
+
+export interface GeographicStatItem {
+    subDistrictId: string;
+    subDistrictName: string;
+    total: number;
+    open: number;
+    assigned: number;
+    resolved: number;
+    closed: number;
+    high: number;
+    medium: number;
+    low: number;
+}
+
+export interface GeographicStatsResult {
+    withSubDistrict: GeographicStatItem[];
+    withoutSubDistrict: number;
+}
+
+export interface TemporalStatItem {
+    period: string;
+    total: number;
+    open: number;
+    resolved: number;
+    closed: number;
+}
+
+export interface OperatorStatItem {
+    operatorId: string;
+    operatorName: string;
+    total: number;
+    resolved: number;
+    closed: number;
+    avgResolutionHours: number | null;
+}
+
+export interface PriorityStatItem {
+    priority: string;
+    total: number;
+}
+
+export interface ExtendedStatsResult {
+    temporal: TemporalStatItem[];
+    byOperator: OperatorStatItem[];
+    byPriority: PriorityStatItem[];
 }

@@ -105,6 +105,19 @@ export class IncidentsController {
         }
     }
 
+    static async desasignarOperador(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { userId } = getAuth(req);
+            const incidentId = req.params.id;
+
+            const incident = await IncidentsService.desasignarOperador(userId, incidentId);
+
+            res.json(incident);
+        } catch (err) {
+            next(err);
+        }
+    }
+
     static async actualizarEstado(req: Request, res: Response, next: NextFunction) {
         try {
             const { userId } = getAuth(req);
@@ -265,6 +278,28 @@ export class IncidentsController {
             const { userId } = getAuth(req);
             const municipalityId = req.params.municipalityId ?? null;
             const data = await IncidentsService.getResolutionMetrics(userId, municipalityId);
+            res.status(200).json(data);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    static async getGeographicStats(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { userId } = getAuth(req);
+            const municipalityId = req.params.municipalityId ?? null;
+            const data = await IncidentsService.getGeographicStats(userId, municipalityId);
+            res.status(200).json(data);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    static async getExtendedStats(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { userId } = getAuth(req);
+            const municipalityId = req.params.municipalityId ?? null;
+            const data = await IncidentsService.getExtendedStats(userId, municipalityId);
             res.status(200).json(data);
         } catch (err) {
             next(err);

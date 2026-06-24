@@ -25,6 +25,16 @@ export class DistrictController {
         }
     }
 
+    static async getMyDistrict(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { userId } = getAuth(req);
+            const district = await DistrictService.getMyDistrict(userId!);
+            res.json(district);
+        } catch (err) {
+            next(err);
+        }
+    }
+
     static async createDistrict(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const { userId } = getAuth(req);

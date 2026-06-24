@@ -2,6 +2,7 @@ import { ObjectId } from "mongodb";
 import { GeoJSONPolygon, GeoJSONMultiPolygon } from "../data/district.model";
 import { DistrictRepository } from "../repositorys/district.repository";
 import { AuthService } from "./auth.services";
+import { MunicipalityRepository } from "../repositorys/municipality.repository";
 
 const VALID_POLYGON_TYPES = ["Polygon", "MultiPolygon"];
 
@@ -113,6 +114,32 @@ export class DistrictService {
 
         if (!district) {
             throw buildError("No se encontró ningún distrito en esa ubicación", 404);
+        }
+
+        return district;
+    }
+
+    static async getMyDistrict(clerkId: string) {
+        const user = await AuthService.getAuthenticatedUser(clerkId);
+
+        if (user.role !== "admin" && user.role !== "superadmin") {
+            throw buildError("No tenés permisos para ver este distrito", 403);
+        }
+
+        if (!user.municipalityId) {
+            throw buildError("El usuario no tiene un municipio asociado", 400);
+        }
+
+        const municipality = await MunicipalityRepository.getMunicipalityById(user.municipalityId);
+
+        if (!municipality) {
+            throw buildError("Municipio no encontrado", 404);
+        }
+
+        const district = await DistrictRepository.getDistrictById(municipality.district.id);
+
+        if (!district) {
+            throw buildError("Distrito no encontrado", 404);
         }
 
         return district;

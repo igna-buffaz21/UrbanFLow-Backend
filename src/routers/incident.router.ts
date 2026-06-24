@@ -14,7 +14,12 @@ router.get("/stats/frequency", requireAuth, IncidentsController.getFrequencyStat
 router.get("/stats/frequency/:municipalityId", requireAuth, IncidentsController.getFrequencyStats);
 router.get("/stats/resolution", requireAuth, IncidentsController.getResolutionMetrics);
 router.get("/stats/resolution/:municipalityId", requireAuth, IncidentsController.getResolutionMetrics);
+router.get("/stats/geographic", requireAuth, IncidentsController.getGeographicStats);
+router.get("/stats/geographic/:municipalityId", requireAuth, IncidentsController.getGeographicStats);
+router.get("/stats/extended", requireAuth, IncidentsController.getExtendedStats);
+router.get("/stats/extended/:municipalityId", requireAuth, IncidentsController.getExtendedStats);
 router.patch("/:id/assign-operator", requireAuth, IncidentsController.asignarOperador);
+router.patch("/:id/unassign-operator", requireAuth, IncidentsController.desasignarOperador);
 router.patch("/:id/status", requireAuth, uploadIncidentImage.single("image"), IncidentsController.actualizarEstado);
 router.patch("/:id/priority", requireAuth, IncidentsController.actualizarPrioridad);
 router.patch("/:id/resolve", requireAuth, IncidentsController.resolverIncidente);
