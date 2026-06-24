@@ -1181,6 +1181,23 @@ export class IncidentsService {
         return IncidentsRepository.getGeographicStats(resolvedMunicipalityId);
     }
 
+    static async getExtendedStats(
+        clerkUserId: string | null,
+        municipalityId: string | null
+    ): Promise<ExtendedStatsResult> {
+        if (!clerkUserId) throw new Error("Unauthenticated user");
+
+        const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
+
+        if (![USER_ROLES.ADMIN, USER_ROLES.SUPERADMIN].includes(authenticatedUser.role)) {
+            throw new Error("Insufficient permissions");
+        }
+
+        const resolvedMunicipalityId = this.resolveMunicipalityId(authenticatedUser, municipalityId);
+
+        return IncidentsRepository.getExtendedStats(resolvedMunicipalityId);
+    }
+
     private static resolveMunicipalityId(
         authenticatedUser: { role: string; municipalityId?: string },
         requestedMunicipalityId: string | null
@@ -1202,16 +1219,16 @@ export class IncidentsService {
     }
 
     private static async generateUniqueIncidentPublicCode(): Promise<string> {
-    while (true) {
-        const randomNumber = Math.floor(10000 + Math.random() * 90000);
-        const publicCode = `INC-${randomNumber}`;
+        while (true) {
+            const randomNumber = Math.floor(10000 + Math.random() * 90000);
+            const publicCode = `INC-${randomNumber}`;
 
-        const existingIncident =
-            await IncidentsRepository.findByPublicCode(publicCode);
+            const existingIncident =
+                await IncidentsRepository.findByPublicCode(publicCode);
 
-        if (!existingIncident) {
-            return publicCode;
+            if (!existingIncident) {
+                return publicCode;
+            }
         }
     }
-}
 }
