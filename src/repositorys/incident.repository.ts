@@ -1205,13 +1205,6 @@ export class IncidentsRepository {
         };
     }
 
-    static async findByPublicCode(publicCode: string) {
-        return await mongoDb()
-            .collection("incidents")
-            .findOne({ publicCode });
-    }
-}
-
     static async getGeographicStats(municipalityId: string): Promise<GeographicStatsResult> {
         const db = mongoDb();
 

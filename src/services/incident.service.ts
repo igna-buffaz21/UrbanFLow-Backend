@@ -1243,7 +1243,6 @@ export class IncidentsService {
         return authenticatedUser.municipalityId;
     }
 
-<<<<<<< HEAD
     private static async generateUniqueIncidentPublicCode(): Promise<string> {
         while (true) {
             const randomNumber = Math.floor(10000 + Math.random() * 90000);
@@ -1252,29 +1251,6 @@ export class IncidentsService {
             const existingIncident =
                 await IncidentsRepository.findByPublicCode(publicCode);
 
-        if (!existingIncident) {
-            return publicCode;
-        }
-    }
-}
-=======
-    static async getExtendedStats(
-        clerkUserId: string | null,
-        municipalityId: string | null
-    ): Promise<ExtendedStatsResult> {
-        if (!clerkUserId) throw new Error("Unauthenticated user");
-
-        const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
-
-        if (![USER_ROLES.ADMIN, USER_ROLES.SUPERADMIN].includes(authenticatedUser.role)) {
-            throw new Error("Insufficient permissions");
-        }
-
-        const resolvedMunicipalityId = this.resolveMunicipalityId(authenticatedUser, municipalityId);
-
-        return IncidentsRepository.getExtendedStats(resolvedMunicipalityId);
-    }
->>>>>>> b9a7001 (agregue nuevos endpointsp para estadisticas)
             if (!existingIncident) {
                 return publicCode;
             }
