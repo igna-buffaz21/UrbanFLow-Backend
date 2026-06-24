@@ -31,6 +31,16 @@ interface GetUsersQuery {
     municipalityId?: unknown;
 }
 
+interface UpdateMyProfileDto {
+    dni: string;
+    phone: string;
+    address: string;
+    province: string;
+    city: string;
+    subDistrict: string;
+    postalCode: string;
+}
+
 interface GetUserStatusParams {
     authenticatedClerkId: string | null;
     userId: string;
@@ -149,7 +159,7 @@ export class UserService {
             const createdUser = await UserRepository.createUser(newUser);
 
             return this.mapInvitedUserResponse(createdUser);
-        } 
+        }
         catch (err) {
             await ClerkRepository.revokeUserInvitation(clerkInvitation.id);
             throw err;
@@ -157,41 +167,41 @@ export class UserService {
     }
 
     static async getPendingUserByEmail(email: string): Promise<User | null> {
-    if (!email || typeof email !== "string") {
-        const error = new Error("Email inválido");
-        (error as any).statusCode = 400;
-        throw error;
-    }
+        if (!email || typeof email !== "string") {
+            const error = new Error("Email inválido");
+            (error as any).statusCode = 400;
+            throw error;
+        }
 
-    return await UserRepository.getPendingUserByEmail(email.trim().toLowerCase());
+        return await UserRepository.getPendingUserByEmail(email.trim().toLowerCase());
     }
 
     static async createUserEntity(data: CreateUserDto): Promise<User> {
-    this.validateCreateUserData(data);
+        this.validateCreateUserData(data);
 
-    const existingUser = await UserRepository.getUserByEmail(data.email.trim().toLowerCase());
+        const existingUser = await UserRepository.getUserByEmail(data.email.trim().toLowerCase());
 
-    if (existingUser) {
-        const error = new Error("Ya existe un usuario con ese email");
-        (error as any).statusCode = 409;
-        throw error;
-    }
+        if (existingUser) {
+            const error = new Error("Ya existe un usuario con ese email");
+            (error as any).statusCode = 409;
+            throw error;
+        }
 
-    const now = new Date();
+        const now = new Date();
 
-    const newUser: User = {
-        clerkId: data.clerkId,
-        name: data.name.trim(),
-        email: data.email.trim().toLowerCase(),
-        photoUrl: data.photoUrl,
-        role: data.role || "citizen",
-        status: data.status || "active",
-        municipalityId: data.municipalityId ? new ObjectId(data.municipalityId) : undefined,
-        createdAt: now,
-        updatedAt: now
-    };
+        const newUser: User = {
+            clerkId: data.clerkId,
+            name: data.name.trim(),
+            email: data.email.trim().toLowerCase(),
+            photoUrl: data.photoUrl,
+            role: data.role || "citizen",
+            status: data.status || "active",
+            municipalityId: data.municipalityId ? new ObjectId(data.municipalityId) : undefined,
+            createdAt: now,
+            updatedAt: now
+        };
 
-    return await UserRepository.createUser(newUser);
+        return await UserRepository.createUser(newUser);
     }
 
     static async activatePendingUser(
@@ -310,6 +320,128 @@ export class UserService {
 
         return await UserRepository.getUsers(filters);
     }
+
+
+    static async updateMyProfile(clerkId: string | null, data: UpdateMyProfileDto) {
+        if (!clerkId) {
+            const error = new Error("Usuario no autenticado");
+            (error as any).statusCode = 401;
+            throw error;
+        }
+
+        const user = await UserRepository.getUserByClerkId(clerkId);
+
+        if (!user) {
+            const error = new Error("El usuario no existe");
+            (error as any).statusCode = 404;
+            throw error;
+        }
+
+        this.validateUpdateMyProfileData(data);
+
+        const existingUserByDni = await UserRepository.getUserByDni(data.dni.trim());
+
+        if (
+            existingUserByDni &&
+            existingUserByDni.clerkId !== clerkId
+        ) {
+            const error = new Error("Ya existe un usuario con ese DNI");
+            (error as any).statusCode = 409;
+            throw error;
+        }
+
+        const updatedUser = await UserRepository.updateMyProfile(clerkId, {
+            dni: data.dni.trim(),
+            phone: data.phone.trim(),
+            address: data.address.trim(),
+            province: data.province.trim(),
+            city: data.city.trim(),
+            subDistrict: data.subDistrict.trim(),
+            postalCode: data.postalCode.trim(),
+            isProfileCompleted: true,
+            updatedAt: new Date()
+        });
+
+        if (!updatedUser) {
+            const error = new Error("No se pudo actualizar el perfil");
+            (error as any).statusCode = 500;
+            throw error;
+        }
+
+        return this.mapUserResponse(updatedUser);
+    }
+
+
+    private static validateUpdateMyProfileData(data: UpdateMyProfileDto) {
+        if (!data.dni || typeof data.dni !== "string") {
+            const error = new Error("El DNI es obligatorio");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        const dniRegex = /^\d{7,8}$/;
+
+        if (!dniRegex.test(data.dni.trim())) {
+            const error = new Error("El DNI debe tener 7 u 8 números");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        if (!data.phone || typeof data.phone !== "string") {
+            const error = new Error("El teléfono es obligatorio");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        const phoneRegex = /^\d{8,15}$/;
+
+        if (!phoneRegex.test(data.phone.trim())) {
+            const error = new Error("El teléfono debe tener entre 8 y 15 números");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        if (!data.address || typeof data.address !== "string" || data.address.trim().length < 3) {
+            const error = new Error("La dirección es obligatoria");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        if (!data.province || typeof data.province !== "string") {
+            const error = new Error("La provincia es obligatoria");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        if (!data.city || typeof data.city !== "string") {
+            const error = new Error("La ciudad es obligatoria");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        if (data.city === "Villa María") {
+            if (!data.subDistrict || typeof data.subDistrict !== "string") {
+                const error = new Error("El barrio es obligatorio");
+                (error as any).statusCode = 400;
+                throw error;
+            }
+        }
+
+        if (!data.postalCode || typeof data.postalCode !== "string") {
+            const error = new Error("El código postal es obligatorio");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        const postalCodeRegex = /^\d{4,8}$/;
+
+        if (!postalCodeRegex.test(data.postalCode.trim())) {
+            const error = new Error("El código postal es inválido");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+    }
+
 
     static async getUserStatus(params: GetUserStatusParams) {
         const { authenticatedClerkId, userId } = params;

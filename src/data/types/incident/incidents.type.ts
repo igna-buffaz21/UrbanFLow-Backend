@@ -23,6 +23,7 @@ export type GeoJSONPoint = {
 
 export interface IncidentDetailResponse {
     id: string;
+    publicCode: string;
 
     title: string;
     description?: string;
@@ -30,7 +31,11 @@ export interface IncidentDetailResponse {
     photoUrl: string | null;
     resolutionPhotoUrl: string | null;
     resolvedAt: Date | null;
+    assignedAt: Date | null;
+    startedAt: Date | null;
+    closedAt: Date | null;
     location: GeoJSONPoint | null;
+    rejectedAt: Date | null;
 
     category: {
         id: string;
