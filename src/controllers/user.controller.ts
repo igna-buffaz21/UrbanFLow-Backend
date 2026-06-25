@@ -118,4 +118,15 @@ export class UsersController {
             next(err);
         }
     }
+
+    static async getCitizenStats(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { userId } = getAuth(req);
+            const groupBy = (req.query.groupBy as "day" | "week" | "month") ?? "month";
+            const data = await UserService.getCitizenStats(userId, groupBy);
+            res.status(200).json(data);
+        } catch (err) {
+            next(err);
+        }
+    }
 }

@@ -24,6 +24,7 @@ router.patch("/:id/status", requireAuth, uploadIncidentImage.single("image"), In
 router.patch("/:id/priority", requireAuth, IncidentsController.actualizarPrioridad);
 router.patch("/:id/resolve", requireAuth, IncidentsController.resolverIncidente);
 router.get("/map", requireAuth, IncidentsController.getMap);
+router.get("/code/:publicCode", requireAuth, IncidentsController.getDetailByPublicCode);
 router.get("/:id", requireAuth, IncidentsController.getDetailById);
 router.post(
   "/",

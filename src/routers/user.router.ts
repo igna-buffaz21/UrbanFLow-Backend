@@ -10,6 +10,7 @@ router.get("/", requireAuth, UsersController.getUsers);
 router.patch("/me/profile", requireAuth, UsersController.updateMyProfile);
 router.get("/:id/status", requireAuth,UsersController.getUserStatus);
 router.patch("/:id/status", requireAuth, UsersController.updateUserStatus);
+router.get("/stats/citizens", requireAuth, UsersController.getCitizenStats);
 router.get("/:id", requireAuth, UsersController.getUserById);
 
 

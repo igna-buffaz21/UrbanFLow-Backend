@@ -9,7 +9,7 @@ import { ImageTypes } from "../data/types/image.types";
 import { AiService } from "./ia.service";
 import { IncidentReportRepository } from "../repositorys/incident-report.repository";
 import { USER_ROLES } from "../data/types/global/const.global";
-import { IncidentPriority, IncidentFilters, ValidatedCreateIncidentInput, GetIncidentFeedInput, FrequencyByCategoryResult, ResolutionMetricsResult, GeographicStatsResult, ExtendedStatsResult } from "../data/types/incident/incidents.type";
+import { IncidentPriority, IncidentFilters, ValidatedCreateIncidentInput, GetIncidentFeedInput, FrequencyByCategoryResult, ResolutionMetricsResult, GeographicStatsResult, ExtendedStatsResult, TemporalGroupBy, IncidentDetailResponse } from "../data/types/incident/incidents.type";
 import { VALID_STATUSES, VALID_PRIORITIES, VALID_ASSIGNED_STATUSES } from "../data/types/incident/incidents.const";
 import { PendingIncidentRepository } from "../repositorys/pending-incident.repository";
 import { PendingIncident } from "../data/pending-incident.model";
@@ -761,6 +761,14 @@ export class IncidentsService {
         };
     }
 
+    static async getDetailByPublicCode(
+        clerkUserId: string | null,
+        publicCode: string
+    ): Promise<IncidentDetailResponse | null> {
+        if (!clerkUserId) throw new Error("Unauthenticated user");
+        return IncidentsRepository.getDetailByPublicCode(publicCode, clerkUserId);
+    }
+
     private static mapUrgencyScoreToPriority(score: number): IncidentPriority {
         if (score <= 2) return "low";
         if (score <= 4) return "medium";
@@ -1132,7 +1140,8 @@ export class IncidentsService {
 
     static async getFrequencyStats(
         clerkUserId: string | null,
-        municipalityId: string | null
+        municipalityId: string | null,
+        priority?: string
     ): Promise<FrequencyByCategoryResult[]> {
         if (!clerkUserId) throw new Error("Unauthenticated user");
 
@@ -1144,12 +1153,13 @@ export class IncidentsService {
 
         const resolvedMunicipalityId = this.resolveMunicipalityId(authenticatedUser, municipalityId);
 
-        return IncidentsRepository.getFrequencyByCategoryStats(resolvedMunicipalityId);
+        return IncidentsRepository.getFrequencyByCategoryStats(resolvedMunicipalityId, priority);
     }
 
     static async getResolutionMetrics(
         clerkUserId: string | null,
-        municipalityId: string | null
+        municipalityId: string | null,
+        priority?: string
     ): Promise<ResolutionMetricsResult> {
         if (!clerkUserId) throw new Error("Unauthenticated user");
 
@@ -1161,12 +1171,13 @@ export class IncidentsService {
 
         const resolvedMunicipalityId = this.resolveMunicipalityId(authenticatedUser, municipalityId);
 
-        return IncidentsRepository.getResolutionMetrics(resolvedMunicipalityId);
+        return IncidentsRepository.getResolutionMetrics(resolvedMunicipalityId, priority);
     }
 
     static async getGeographicStats(
         clerkUserId: string | null,
-        municipalityId: string | null
+        municipalityId: string | null,
+        priority?: string
     ): Promise<GeographicStatsResult> {
         if (!clerkUserId) throw new Error("Unauthenticated user");
 
@@ -1178,12 +1189,14 @@ export class IncidentsService {
 
         const resolvedMunicipalityId = this.resolveMunicipalityId(authenticatedUser, municipalityId);
 
-        return IncidentsRepository.getGeographicStats(resolvedMunicipalityId);
+        return IncidentsRepository.getGeographicStats(resolvedMunicipalityId, priority);
     }
 
     static async getExtendedStats(
         clerkUserId: string | null,
-        municipalityId: string | null
+        municipalityId: string | null,
+        groupBy: TemporalGroupBy = "month",
+        priority?: string
     ): Promise<ExtendedStatsResult> {
         if (!clerkUserId) throw new Error("Unauthenticated user");
 
@@ -1195,7 +1208,7 @@ export class IncidentsService {
 
         const resolvedMunicipalityId = this.resolveMunicipalityId(authenticatedUser, municipalityId);
 
-        return IncidentsRepository.getExtendedStats(resolvedMunicipalityId);
+        return IncidentsRepository.getExtendedStats(resolvedMunicipalityId, groupBy, priority);
     }
 
     private static resolveMunicipalityId(

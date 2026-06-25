@@ -172,6 +172,8 @@ export interface TemporalStatItem {
     closed: number;
 }
 
+export type TemporalGroupBy = "day" | "week" | "month";
+
 export interface OperatorStatItem {
     operatorId: string;
     operatorName: string;
@@ -190,4 +192,5 @@ export interface ExtendedStatsResult {
     temporal: TemporalStatItem[];
     byOperator: OperatorStatItem[];
     byPriority: PriorityStatItem[];
+    groupBy: TemporalGroupBy;
 }
