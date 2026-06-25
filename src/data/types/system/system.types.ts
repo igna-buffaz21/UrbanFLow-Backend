@@ -100,4 +100,55 @@ export interface SystemOverviewResponse {
     };
 }
 
+export interface SystemMunicipalityUsageItem {
+    municipality: {
+        id: string;
+        name: string;
+        status: string;
+        district: {
+            id: string;
+            name: string;
+        } | null;
+    };
+    monthlyLimit: number;
+    month: string;
+    incidents: {
+        created: number;
+        remaining: number;
+        usagePercent: number;
+        exceededLimit: boolean;
+        nearLimit: boolean;
+        active: number;
+        resolved: number;
+        closed: number;
+        rejected: number;
+        canceled: number;
+        byStatus: Record<string, number>;
+        byPriority: Record<string, number>;
+        lastIncidentAt: Date | null;
+    };
+    projection: {
+        elapsedDays: number;
+        daysInMonth: number;
+        averagePerDay: number;
+        projectedMonthlyIncidents: number;
+        projectedUsagePercent: number;
+    };
+}
+
+export interface SystemMunicipalityUsageResponse {
+    generatedAt: Date;
+    month: string;
+    from: Date;
+    to: Date;
+    monthlyLimit: number;
+    totals: {
+        municipalities: number;
+        incidentsCreated: number;
+        exceededLimit: number;
+        nearLimit: number;
+    };
+    municipalities: SystemMunicipalityUsageItem[];
+}
+
 export type { SystemMetric };

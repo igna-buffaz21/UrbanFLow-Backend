@@ -13,6 +13,20 @@ export class SystemController {
         }
     }
 
+    static async getMunicipalityUsage(req: Request, res: Response, next: NextFunction) {
+        try {
+            const usage = await SystemService.getMunicipalityUsage({
+                municipalityId: req.params.id ?? req.query.municipalityId,
+                month: req.query.month
+            });
+
+            return res.json(usage);
+        }
+        catch (err) {
+            next(err);
+        }
+    }
+
     static async getCurrent(req: Request, res: Response, next: NextFunction) {
         try {
             const current = await SystemService.getCurrent();

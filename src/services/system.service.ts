@@ -1,3 +1,4 @@
+import { ObjectId } from "mongodb";
 import * as si from "systeminformation";
 import type { Systeminformation } from "systeminformation";
 import { mongoDb } from "../config/mongodb.config";
@@ -7,6 +8,8 @@ import {
     SystemHistoryItem,
     SystemHistoryRange,
     SystemMetric,
+    SystemMunicipalityUsageItem,
+    SystemMunicipalityUsageResponse,
     SystemOverviewResponse,
     SystemResourceMetrics,
     SystemServiceStatus
@@ -15,6 +18,7 @@ import {
 const BYTES_IN_MB = 1024 * 1024;
 const BYTES_IN_GB = 1024 * 1024 * 1024;
 const METRICS_SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
+const MONTHLY_INCIDENT_LIMIT = 300;
 const RANGE_DAYS: Record<SystemHistoryRange, number> = {
     day: 1,
     week: 7,
@@ -38,6 +42,35 @@ type SystemMetricHistoryDocument = SystemMetric & {
         freeGb?: number;
     };
 };
+
+interface MunicipalityUsageBase {
+    id: string;
+    name: string;
+    status: string;
+    district: {
+        id: string;
+        name: string;
+    } | null;
+}
+
+interface IncidentUsageCount {
+    _id: ObjectId;
+    created: number;
+    active: number;
+    resolved: number;
+    closed: number;
+    rejected: number;
+    canceled: number;
+    lastIncidentAt: Date | null;
+}
+
+interface IncidentUsageGroupCount {
+    _id: {
+        municipalityId: ObjectId;
+        value?: string;
+    };
+    count: number;
+}
 
 export class SystemService {
     private static metricsScheduler: NodeJS.Timeout | null = null;
@@ -159,6 +192,171 @@ export class SystemService {
         };
     }
 
+    static async getMunicipalityUsage(query: {
+        municipalityId?: unknown;
+        month?: unknown;
+    }): Promise<SystemMunicipalityUsageResponse> {
+        const db = mongoDb();
+        const monthRange = this.resolveMonthRange(query.month);
+        const municipalityId = this.resolveOptionalObjectId(query.municipalityId, "municipalityId inválido");
+        const municipalityMatch = municipalityId ? { _id: municipalityId } : {};
+        const incidentMatch: Record<string, unknown> = {
+            createdAt: {
+                $gte: monthRange.from,
+                $lt: monthRange.to
+            }
+        };
+
+        if (municipalityId) {
+            incidentMatch.municipalityId = municipalityId;
+        }
+
+        const [
+            municipalities,
+            incidentTotals,
+            statusCounts,
+            priorityCounts
+        ] = await Promise.all([
+            db.collection(COLLECTION_NAMES.MUNICIPALITIES)
+                .aggregate<MunicipalityUsageBase>([
+                    { $match: municipalityMatch },
+                    {
+                        $lookup: {
+                            from: COLLECTION_NAMES.DISTRICTS,
+                            localField: "districtId",
+                            foreignField: "_id",
+                            as: "districtData"
+                        }
+                    },
+                    {
+                        $unwind: {
+                            path: "$districtData",
+                            preserveNullAndEmptyArrays: true
+                        }
+                    },
+                    {
+                        $project: {
+                            _id: 0,
+                            id: { $toString: "$_id" },
+                            name: 1,
+                            status: 1,
+                            district: {
+                                $cond: [
+                                    "$districtData",
+                                    {
+                                        id: { $toString: "$districtData._id" },
+                                        name: "$districtData.name"
+                                    },
+                                    null
+                                ]
+                            }
+                        }
+                    }
+                ])
+                .toArray(),
+            db.collection(COLLECTION_NAMES.INCIDENTS)
+                .aggregate<IncidentUsageCount>([
+                    { $match: incidentMatch },
+                    {
+                        $group: {
+                            _id: "$municipalityId",
+                            created: { $sum: 1 },
+                            active: {
+                                $sum: {
+                                    $cond: [{ $in: ["$status", ACTIVE_INCIDENT_STATUSES] }, 1, 0]
+                                }
+                            },
+                            resolved: {
+                                $sum: { $cond: [{ $eq: ["$status", "resolved"] }, 1, 0] }
+                            },
+                            closed: {
+                                $sum: { $cond: [{ $eq: ["$status", "closed"] }, 1, 0] }
+                            },
+                            rejected: {
+                                $sum: { $cond: [{ $eq: ["$status", "rejected"] }, 1, 0] }
+                            },
+                            canceled: {
+                                $sum: { $cond: [{ $eq: ["$status", "canceled"] }, 1, 0] }
+                            },
+                            lastIncidentAt: { $max: "$createdAt" }
+                        }
+                    }
+                ])
+                .toArray(),
+            this.countIncidentsByField(incidentMatch, "status"),
+            this.countIncidentsByField(incidentMatch, "priority")
+        ]);
+
+        if (municipalityId && municipalities.length === 0) {
+            const error = new Error("Municipalidad no encontrada");
+            (error as any).statusCode = 404;
+            throw error;
+        }
+
+        const totalsByMunicipality = new Map(
+            incidentTotals.map((item) => [item._id.toString(), item])
+        );
+        const statusByMunicipality = this.mapGroupedCountsByMunicipality(statusCounts);
+        const priorityByMunicipality = this.mapGroupedCountsByMunicipality(priorityCounts);
+        const elapsedDays = this.calculateElapsedDaysInMonth(monthRange.from, monthRange.to);
+        const daysInMonth = this.getDaysInMonth(monthRange.year, monthRange.monthIndex);
+
+        const usageItems = municipalities.map<SystemMunicipalityUsageItem>((municipality) => {
+            const totals = totalsByMunicipality.get(municipality.id);
+            const created = totals?.created ?? 0;
+            const usagePercent = this.calculatePercent(created, MONTHLY_INCIDENT_LIMIT);
+            const projectedMonthlyIncidents = this.roundToTwo((created / elapsedDays) * daysInMonth);
+
+            return {
+                municipality,
+                monthlyLimit: MONTHLY_INCIDENT_LIMIT,
+                month: monthRange.monthKey,
+                incidents: {
+                    created,
+                    remaining: Math.max(MONTHLY_INCIDENT_LIMIT - created, 0),
+                    usagePercent,
+                    exceededLimit: created > MONTHLY_INCIDENT_LIMIT,
+                    nearLimit: usagePercent >= 80 && created <= MONTHLY_INCIDENT_LIMIT,
+                    active: totals?.active ?? 0,
+                    resolved: totals?.resolved ?? 0,
+                    closed: totals?.closed ?? 0,
+                    rejected: totals?.rejected ?? 0,
+                    canceled: totals?.canceled ?? 0,
+                    byStatus: statusByMunicipality.get(municipality.id) ?? {},
+                    byPriority: priorityByMunicipality.get(municipality.id) ?? {},
+                    lastIncidentAt: totals?.lastIncidentAt ?? null
+                },
+                projection: {
+                    elapsedDays,
+                    daysInMonth,
+                    averagePerDay: this.roundToTwo(created / elapsedDays),
+                    projectedMonthlyIncidents,
+                    projectedUsagePercent: this.calculatePercent(
+                        projectedMonthlyIncidents,
+                        MONTHLY_INCIDENT_LIMIT
+                    )
+                }
+            };
+        });
+
+        const incidentsCreated = usageItems.reduce((sum, item) => sum + item.incidents.created, 0);
+
+        return {
+            generatedAt: new Date(),
+            month: monthRange.monthKey,
+            from: monthRange.from,
+            to: monthRange.to,
+            monthlyLimit: MONTHLY_INCIDENT_LIMIT,
+            totals: {
+                municipalities: usageItems.length,
+                incidentsCreated,
+                exceededLimit: usageItems.filter((item) => item.incidents.exceededLimit).length,
+                nearLimit: usageItems.filter((item) => item.incidents.nearLimit).length
+            },
+            municipalities: usageItems
+        };
+    }
+
     static startMetricsScheduler(intervalMs = METRICS_SNAPSHOT_INTERVAL_MS): void {
         if (this.metricsScheduler) {
             return;
@@ -227,6 +425,107 @@ export class SystemService {
             acc[key] = item.count;
             return acc;
         }, {});
+    }
+
+    private static async countIncidentsByField(
+        match: Record<string, unknown>,
+        field: string
+    ): Promise<IncidentUsageGroupCount[]> {
+        const db = mongoDb();
+
+        return db
+            .collection(COLLECTION_NAMES.INCIDENTS)
+            .aggregate<IncidentUsageGroupCount>([
+                { $match: match },
+                {
+                    $group: {
+                        _id: {
+                            municipalityId: "$municipalityId",
+                            value: `$${field}`
+                        },
+                        count: { $sum: 1 }
+                    }
+                }
+            ])
+            .toArray();
+    }
+
+    private static mapGroupedCountsByMunicipality(
+        items: IncidentUsageGroupCount[]
+    ): Map<string, Record<string, number>> {
+        return items.reduce<Map<string, Record<string, number>>>((acc, item) => {
+            const municipalityId = item._id.municipalityId.toString();
+            const key = item._id.value ? String(item._id.value) : "unknown";
+            const municipalityCounts = acc.get(municipalityId) ?? {};
+
+            municipalityCounts[key] = item.count;
+            acc.set(municipalityId, municipalityCounts);
+
+            return acc;
+        }, new Map());
+    }
+
+    private static resolveOptionalObjectId(value: unknown, message: string): ObjectId | undefined {
+        if (!value) {
+            return undefined;
+        }
+
+        if (typeof value !== "string" || !ObjectId.isValid(value)) {
+            const error = new Error(message);
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        return new ObjectId(value);
+    }
+
+    private static resolveMonthRange(value: unknown): {
+        monthKey: string;
+        from: Date;
+        to: Date;
+        year: number;
+        monthIndex: number;
+    } {
+        const now = new Date();
+        const defaultMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+        const monthKey = value ?? defaultMonth;
+
+        if (typeof monthKey !== "string" || !/^\d{4}-\d{2}$/.test(monthKey)) {
+            const error = new Error("Month inválido. Usá formato YYYY-MM");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        const [yearValue, monthValue] = monthKey.split("-").map(Number);
+
+        if (monthValue < 1 || monthValue > 12) {
+            const error = new Error("Month inválido. Usá un mes entre 01 y 12");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        const monthIndex = monthValue - 1;
+
+        return {
+            monthKey,
+            from: new Date(Date.UTC(yearValue, monthIndex, 1, 0, 0, 0, 0)),
+            to: new Date(Date.UTC(yearValue, monthIndex + 1, 1, 0, 0, 0, 0)),
+            year: yearValue,
+            monthIndex
+        };
+    }
+
+    private static calculateElapsedDaysInMonth(from: Date, to: Date): number {
+        const now = new Date();
+        const end = now < from ? from : now > to ? to : now;
+        const elapsedMs = end.getTime() - from.getTime();
+        const elapsedDays = Math.ceil(elapsedMs / (24 * 60 * 60 * 1000));
+
+        return Math.max(elapsedDays, 1);
+    }
+
+    private static getDaysInMonth(year: number, monthIndex: number): number {
+        return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
     }
 
     private static async saveMetricSnapshot(): Promise<SystemMetric | null> {
