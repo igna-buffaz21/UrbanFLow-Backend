@@ -7,6 +7,7 @@ import {
     SystemHistoryItem,
     SystemHistoryRange,
     SystemMetric,
+    SystemOverviewResponse,
     SystemResourceMetrics,
     SystemServiceStatus
 } from "../data/types/system/system.types";
@@ -20,6 +21,7 @@ const RANGE_DAYS: Record<SystemHistoryRange, number> = {
     month: 30,
     year: 365
 };
+const ACTIVE_INCIDENT_STATUSES = ["in_review", "open", "assigned", "in_progress"];
 
 type SystemMetricHistoryDocument = SystemMetric & {
     cpu?: {
@@ -49,6 +51,111 @@ export class SystemService {
         return {
             ...metrics,
             services
+        };
+    }
+
+    static async getOverview(): Promise<SystemOverviewResponse> {
+        const db = mongoDb();
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const last7DaysStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+        const [
+            totalUsers,
+            usersByRole,
+            usersByStatus,
+            newUsersToday,
+            newUsersLast7Days,
+            totalIncidents,
+            activeIncidents,
+            incidentsByStatus,
+            incidentsByPriority,
+            incidentsToday,
+            incidentsLast7Days,
+            totalMunicipalities,
+            municipalitiesByStatus,
+            totalDistricts,
+            totalSubDistricts,
+            activeSubDistricts,
+            totalCategories,
+            totalReports,
+            totalComments,
+            visibleComments,
+            totalPendingIncidents,
+            pendingDuplicateConfirmations
+        ] = await Promise.all([
+            db.collection(COLLECTION_NAMES.USERS).countDocuments(),
+            this.countByField(COLLECTION_NAMES.USERS, "role"),
+            this.countByField(COLLECTION_NAMES.USERS, "status"),
+            db.collection(COLLECTION_NAMES.USERS).countDocuments({ createdAt: { $gte: todayStart } }),
+            db.collection(COLLECTION_NAMES.USERS).countDocuments({ createdAt: { $gte: last7DaysStart } }),
+            db.collection(COLLECTION_NAMES.INCIDENTS).countDocuments(),
+            db.collection(COLLECTION_NAMES.INCIDENTS).countDocuments({
+                status: { $in: ACTIVE_INCIDENT_STATUSES }
+            }),
+            this.countByField(COLLECTION_NAMES.INCIDENTS, "status"),
+            this.countByField(COLLECTION_NAMES.INCIDENTS, "priority"),
+            db.collection(COLLECTION_NAMES.INCIDENTS).countDocuments({ createdAt: { $gte: todayStart } }),
+            db.collection(COLLECTION_NAMES.INCIDENTS).countDocuments({ createdAt: { $gte: last7DaysStart } }),
+            db.collection(COLLECTION_NAMES.MUNICIPALITIES).countDocuments(),
+            this.countByField(COLLECTION_NAMES.MUNICIPALITIES, "status"),
+            db.collection(COLLECTION_NAMES.DISTRICTS).countDocuments(),
+            db.collection(COLLECTION_NAMES.SUB_DISTRICTS).countDocuments(),
+            db.collection(COLLECTION_NAMES.SUB_DISTRICTS).countDocuments({ status: "active" }),
+            db.collection(COLLECTION_NAMES.CATEGORIES).countDocuments(),
+            db.collection(COLLECTION_NAMES.INCIDENT_REPORTS).countDocuments(),
+            db.collection(COLLECTION_NAMES.INCIDENT_COMMENTS).countDocuments(),
+            db.collection(COLLECTION_NAMES.INCIDENT_COMMENTS).countDocuments({ status: "visible" }),
+            db.collection(COLLECTION_NAMES.PENDING_INCIDENTS).countDocuments(),
+            db.collection(COLLECTION_NAMES.PENDING_INCIDENTS).countDocuments({
+                status: "waiting_duplicate_confirmation"
+            })
+        ]);
+
+        return {
+            generatedAt: new Date(),
+            users: {
+                total: totalUsers,
+                active: this.getCount(usersByStatus, "active"),
+                pending: this.getCount(usersByStatus, "pending"),
+                inactive: this.getCount(usersByStatus, "inactive"),
+                blocked: this.getCount(usersByStatus, "blocked"),
+                newToday: newUsersToday,
+                newLast7Days: newUsersLast7Days,
+                byRole: usersByRole,
+                byStatus: usersByStatus
+            },
+            incidents: {
+                total: totalIncidents,
+                active: activeIncidents,
+                resolved: this.getCount(incidentsByStatus, "resolved"),
+                closed: this.getCount(incidentsByStatus, "closed"),
+                rejected: this.getCount(incidentsByStatus, "rejected"),
+                canceled: this.getCount(incidentsByStatus, "canceled"),
+                createdToday: incidentsToday,
+                createdLast7Days: incidentsLast7Days,
+                byStatus: incidentsByStatus,
+                byPriority: incidentsByPriority
+            },
+            municipalities: {
+                total: totalMunicipalities,
+                active: this.getCount(municipalitiesByStatus, "active"),
+                inactive: this.getCount(municipalitiesByStatus, "inactive"),
+                byStatus: municipalitiesByStatus
+            },
+            coverage: {
+                districts: totalDistricts,
+                subDistricts: totalSubDistricts,
+                activeSubDistricts,
+                categories: totalCategories
+            },
+            engagement: {
+                reports: totalReports,
+                comments: totalComments,
+                visibleComments,
+                pendingIncidents: totalPendingIncidents,
+                pendingDuplicateConfirmations
+            }
         };
     }
 
@@ -96,6 +203,30 @@ export class SystemService {
             .toArray();
 
         return items.map((item) => this.mapHistoryItem(item));
+    }
+
+    private static async countByField(
+        collectionName: string,
+        field: string
+    ): Promise<Record<string, number>> {
+        const db = mongoDb();
+        const items = await db
+            .collection(collectionName)
+            .aggregate<{ _id?: unknown; count: number }>([
+                {
+                    $group: {
+                        _id: `$${field}`,
+                        count: { $sum: 1 }
+                    }
+                }
+            ])
+            .toArray();
+
+        return items.reduce<Record<string, number>>((acc, item) => {
+            const key = item._id ? String(item._id) : "unknown";
+            acc[key] = item.count;
+            return acc;
+        }, {});
     }
 
     private static async saveMetricSnapshot(): Promise<SystemMetric | null> {
@@ -368,5 +499,9 @@ export class SystemService {
 
     private static roundToTwo(value: number): number {
         return Math.round(value * 100) / 100;
+    }
+
+    private static getCount(counts: Record<string, number>, key: string): number {
+        return counts[key] ?? 0;
     }
 }
