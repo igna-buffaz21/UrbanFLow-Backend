@@ -3,11 +3,19 @@ import { UserRepository } from "../repositorys/user.repository";
 import { User, UserRole, UserStatus } from "../data/user.model";
 import { ClerkRepository } from "../repositorys/clerk.repository";
 import { MunicipalityRepository } from "../repositorys/municipality.repository";
+import { USER_ROLES } from "../data/types/global/const.global";
+import { AuthService } from "./auth.services";
+import type { CitizenStatsResult } from "../data/types/user/user.type";
 
 const VALID_USER_ROLES: UserRole[] = ["superadmin", "admin", "operator", "citizen"];
 const VALID_USER_STATUSES: UserStatus[] = ["pending", "active", "inactive", "blocked"];
 const INVITABLE_ROLES: UserRole[] = ["admin", "operator"];
-const VALID_STATUS_TO_UPDATE = ["active", "inactive"];
+const VALID_STATUS_TO_UPDATE_BY_ROLE: Record<UserRole, UserStatus[]> = {
+    superadmin: [],
+    admin: ["active", "inactive"],
+    operator: ["active", "inactive"],
+    citizen: ["active", "blocked"]
+};
 
 interface CreateUserDto {
     clerkId: string;
@@ -29,6 +37,8 @@ interface GetUsersQuery {
     role?: unknown;
     status?: unknown;
     municipalityId?: unknown;
+    page?: unknown;
+    limit?: unknown;
 }
 
 interface UpdateMyProfileDto {
@@ -318,9 +328,16 @@ export class UserService {
             filters.municipalityId = new ObjectId(query.municipalityId);
         }
 
-        return await UserRepository.getUsers(filters);
-    }
+        let pagination: { page: number; limit: number } | undefined;
 
+        if (query.page || query.limit) {
+            const page = parseInt(query.page as string, 10) || 1;
+            const limit = parseInt(query.limit as string, 10) || 10;
+            pagination = { page, limit };
+        }
+
+        return await UserRepository.getUsers(filters, pagination);
+    }
 
     static async updateMyProfile(clerkId: string | null, data: UpdateMyProfileDto) {
         if (!clerkId) {
@@ -532,11 +549,17 @@ export class UserService {
             throw error;
         }
 
-        if (!VALID_STATUS_TO_UPDATE.includes(status)) {
-            const error = new Error("Estado inválido. Solo se permite active o inactive");
+        if (!VALID_USER_STATUSES.includes(status)) {
+            const error = new Error("Estado inválido");
             (error as any).statusCode = 400;
             throw error;
         }
+
+        /* if (!VALID_STATUS_TO_UPDATE.includes(status)) {
+             const error = new Error("Estado inválido. Solo se permite active o inactive");
+             (error as any).statusCode = 400;
+             throw error;
+         }*/
 
         const authenticatedUser = await UserRepository.getUserByClerkId(authenticatedClerkId);
 
@@ -585,8 +608,8 @@ export class UserService {
         }
 
         if (authenticatedUser.role === "admin") {
-            if (userToUpdate.role !== "operator") {
-                const error = new Error("El admin solo puede cambiar el estado de operarios");
+            if (userToUpdate.role !== "operator" && userToUpdate.role !== "citizen") {
+                const error = new Error("El admin solo puede cambiar el estado de operarios o usuarios");
                 (error as any).statusCode = 403;
                 throw error;
             }
@@ -604,6 +627,18 @@ export class UserService {
                 (error as any).statusCode = 403;
                 throw error;
             }
+        }
+
+        const allowedStatusesForTarget = VALID_STATUS_TO_UPDATE_BY_ROLE[userToUpdate.role];
+
+        if (!allowedStatusesForTarget.includes(status)) {
+            const error = new Error(
+                userToUpdate.role === "citizen"
+                    ? "Para usuarios solo se permite active o blocked"
+                    : "Estado inválido. Solo se permite active o inactive"
+            );
+            (error as any).statusCode = 400;
+            throw error;
         }
 
         const updatedUser = await UserRepository.updateUserStatus(userObjectId, status);
@@ -695,8 +730,8 @@ export class UserService {
     }
 
     private static async getUserDetailForAdmin(authenticatedUser: User, user: User) {
-        if (user.role !== "admin" && user.role !== "operator") {
-            const error = new Error("El admin solo puede consultar admins u operarios");
+        if (user.role !== "admin" && user.role !== "operator" && user.role !== "citizen") {
+            const error = new Error("El admin solo puede consultar admins, operarios o usuarios");
             (error as any).statusCode = 403;
             throw error;
         }
@@ -725,7 +760,16 @@ export class UserService {
             status: user.status,
             municipality,
             photoUrl: user.photoUrl || null,
-            createdAt: user.createdAt
+            createdAt: user.createdAt,
+            ...(user.role === "citizen" && {
+                dni: user.dni || null,
+                phone: user.phone || null,
+                address: user.address || null,
+                province: user.province || null,
+                city: user.city || null,
+                subDistrict: user.subDistrict || null,
+                postalCode: user.postalCode || null
+            })
         };
     }
 
@@ -910,6 +954,22 @@ export class UserService {
             status: user.status,
             municipalityId: user.municipalityId?.toString()
         };
+    }
+
+    static async getCitizenStats(clerkUserId: string | null, groupBy: "day" | "week" | "month" = "month"): Promise<CitizenStatsResult> {
+        if (!clerkUserId) throw new Error("Unauthenticated user");
+
+        const authenticatedUser = await AuthService.getAuthenticatedUser(clerkUserId);
+
+        if (![USER_ROLES.ADMIN, USER_ROLES.SUPERADMIN].includes(authenticatedUser.role)) {
+            throw new Error("Insufficient permissions");
+        }
+
+        if (!authenticatedUser.municipalityId || !ObjectId.isValid(authenticatedUser.municipalityId)) {
+            throw new Error("User must have a valid municipality");
+        }
+
+        return UserRepository.getCitizenStats(authenticatedUser.municipalityId, groupBy);
     }
 
 

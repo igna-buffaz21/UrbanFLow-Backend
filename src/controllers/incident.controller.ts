@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { getAuth } from "@clerk/express";
 import { IncidentsService } from "../services/incident.service";
+import { TemporalGroupBy } from "../data/types/incident/incidents.type";
 
 export class IncidentsController {
     static async createIncident(req: Request, res: Response, next: NextFunction) {
@@ -263,12 +264,12 @@ export class IncidentsController {
             next(err);
         }
     }
-    
     static async getFrequencyStats(req: Request, res: Response, next: NextFunction) {
         try {
             const { userId } = getAuth(req);
             const municipalityId = req.params.municipalityId ?? null;
-            const data = await IncidentsService.getFrequencyStats(userId, municipalityId);
+            const priority = req.query.priority as string | undefined;
+            const data = await IncidentsService.getFrequencyStats(userId, municipalityId, priority);
             res.status(200).json(data);
         } catch (err) {
             next(err);
@@ -279,7 +280,8 @@ export class IncidentsController {
         try {
             const { userId } = getAuth(req);
             const municipalityId = req.params.municipalityId ?? null;
-            const data = await IncidentsService.getResolutionMetrics(userId, municipalityId);
+            const priority = req.query.priority as string | undefined;
+            const data = await IncidentsService.getResolutionMetrics(userId, municipalityId, priority);
             res.status(200).json(data);
         } catch (err) {
             next(err);
@@ -290,7 +292,8 @@ export class IncidentsController {
         try {
             const { userId } = getAuth(req);
             const municipalityId = req.params.municipalityId ?? null;
-            const data = await IncidentsService.getGeographicStats(userId, municipalityId);
+            const priority = req.query.priority as string | undefined;
+            const data = await IncidentsService.getGeographicStats(userId, municipalityId, priority);
             res.status(200).json(data);
         } catch (err) {
             next(err);
@@ -301,7 +304,21 @@ export class IncidentsController {
         try {
             const { userId } = getAuth(req);
             const municipalityId = req.params.municipalityId ?? null;
-            const data = await IncidentsService.getExtendedStats(userId, municipalityId);
+            const groupBy = (req.query.groupBy as TemporalGroupBy) ?? "month";
+            const priority = req.query.priority as string | undefined;
+            const data = await IncidentsService.getExtendedStats(userId, municipalityId, groupBy, priority);
+            res.status(200).json(data);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    static async getDetailByPublicCode(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { userId } = getAuth(req);
+            const { publicCode } = req.params;
+            const data = await IncidentsService.getDetailByPublicCode(userId, publicCode);
+            if (!data) return res.status(404).json({ message: "Incidente no encontrado" });
             res.status(200).json(data);
         } catch (err) {
             next(err);

@@ -1,7 +1,7 @@
 import { ObjectId } from "mongodb";
 import { mongoDb } from "../config/mongodb.config";
 import { NearbyIncidentForAi } from "../data/types/ia/ia.type";
-import { IncidentDetailResponse, GetMapParams, IncidentFilters, FindNearbyForAiParams, GetIncidentFeedRepositoryParams, FrequencyByCategoryResult, ResolutionByCategoryResult, ResolutionMetricsResult, GeographicStatItem, GeographicStatsResult, TemporalStatItem, OperatorStatItem, PriorityStatItem, ExtendedStatsResult, } from "../data/types/incident/incidents.type";
+import { IncidentDetailResponse, GetMapParams, IncidentFilters, FindNearbyForAiParams, GetIncidentFeedRepositoryParams, FrequencyByCategoryResult, ResolutionByCategoryResult, ResolutionMetricsResult, GeographicStatItem, GeographicStatsResult, TemporalStatItem, OperatorStatItem, PriorityStatItem, ExtendedStatsResult, TemporalGroupBy } from "../data/types/incident/incidents.type";
 import { COLLECTION_NAMES } from "../data/types/global/const.global";
 import { INCIDENT_STATUS } from "../data/incident.model";
 
@@ -694,6 +694,25 @@ export class IncidentsRepository {
         }
     }
 
+    static async getDetailByPublicCode(
+        publicCode: string,
+        clerkUserId: string | null
+    ): Promise<IncidentDetailResponse | null> {
+        try {
+            const db = mongoDb();
+
+            const incident = await db.collection(COLLECTION_NAMES.INCIDENTS).findOne({
+                publicCode: publicCode.toUpperCase(),
+            });
+
+            if (!incident) return null;
+
+            return IncidentsRepository.getDetailById(incident._id, clerkUserId);
+        } catch (err) {
+            throw new Error("Error al obtener el incidente por código: " + err);
+        }
+    }
+
     static async findNearbyForAiDuplicateCheck(params: FindNearbyForAiParams) {
         try {
             const db = mongoDb();
@@ -995,7 +1014,7 @@ export class IncidentsRepository {
         }
     }
 
-    static async getFrequencyByCategoryStats(municipalityId: string): Promise<FrequencyByCategoryResult[]> {
+    static async getFrequencyByCategoryStats(municipalityId: string, priority?: string): Promise<FrequencyByCategoryResult[]> {
         const db = mongoDb();
 
         const result = await db
@@ -1004,6 +1023,7 @@ export class IncidentsRepository {
                 {
                     $match: {
                         municipalityId: new ObjectId(municipalityId),
+                        ...(priority ? { priority } : {}),
                     },
                 },
                 {
@@ -1073,7 +1093,7 @@ export class IncidentsRepository {
         return result;
     }
 
-    static async getResolutionMetrics(municipalityId: string): Promise<ResolutionMetricsResult> {
+    static async getResolutionMetrics(municipalityId: string, priority?: string): Promise<ResolutionMetricsResult> {
         const db = mongoDb();
 
         const [result] = await db
@@ -1082,6 +1102,7 @@ export class IncidentsRepository {
                 {
                     $match: {
                         municipalityId: new ObjectId(municipalityId),
+                        ...(priority ? { priority } : {}),
                     },
                 },
                 {
@@ -1205,7 +1226,7 @@ export class IncidentsRepository {
         };
     }
 
-    static async getGeographicStats(municipalityId: string): Promise<GeographicStatsResult> {
+    static async getGeographicStats(municipalityId: string, priority?: string): Promise<GeographicStatsResult> {
         const db = mongoDb();
 
         const [result] = await db
@@ -1214,6 +1235,7 @@ export class IncidentsRepository {
                 {
                     $match: {
                         municipalityId: new ObjectId(municipalityId),
+                        ...(priority ? { priority } : {}),
                     },
                 },
                 {
@@ -1289,8 +1311,7 @@ export class IncidentsRepository {
             withoutSubDistrict: (result as any).withoutSubDistrict[0]?.count ?? 0,
         };
     }
-
-    static async getExtendedStats(municipalityId: string): Promise<ExtendedStatsResult> {
+    static async getExtendedStats(municipalityId: string, groupBy: TemporalGroupBy = "month", priority?: string): Promise<ExtendedStatsResult> {
         const db = mongoDb();
 
         const [result] = await db
@@ -1299,40 +1320,75 @@ export class IncidentsRepository {
                 {
                     $match: {
                         municipalityId: new ObjectId(municipalityId),
+                        ...(priority ? { priority } : {}),
                     },
                 },
                 {
                     $facet: {
                         temporal: [
+                            ...(groupBy === "day" ? [{
+                                $match: {
+                                    createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+                                }
+                            }] : groupBy === "week" ? [{
+                                $match: {
+                                    createdAt: { $gte: new Date(Date.now() - 12 * 7 * 24 * 60 * 60 * 1000) }
+                                }
+                            }] : []),
                             {
                                 $group: {
-                                    _id: {
-                                        year: { $year: "$createdAt" },
-                                        month: { $month: "$createdAt" },
-                                    },
+                                    _id: groupBy === "day"
+                                        ? {
+                                            year: { $year: "$createdAt" },
+                                            month: { $month: "$createdAt" },
+                                            day: { $dayOfMonth: "$createdAt" },
+                                        }
+                                        : groupBy === "week"
+                                            ? {
+                                                year: { $isoWeekYear: "$createdAt" },
+                                                week: { $isoWeek: "$createdAt" },
+                                            }
+                                            : {
+                                                year: { $year: "$createdAt" },
+                                                month: { $month: "$createdAt" },
+                                            },
                                     total: { $sum: 1 },
                                     open: { $sum: { $cond: [{ $eq: ["$status", "open"] }, 1, 0] } },
                                     resolved: { $sum: { $cond: [{ $eq: ["$status", "resolved"] }, 1, 0] } },
                                     closed: { $sum: { $cond: [{ $eq: ["$status", "closed"] }, 1, 0] } },
                                 },
                             },
-                            { $sort: { "_id.year": 1, "_id.month": 1 } },
+                            {
+                                $sort: groupBy === "day"
+                                    ? { "_id.year": 1, "_id.month": 1, "_id.day": 1 }
+                                    : groupBy === "week"
+                                        ? { "_id.year": 1, "_id.week": 1 }
+                                        : { "_id.year": 1, "_id.month": 1 },
+                            },
                             {
                                 $project: {
                                     _id: 0,
-                                    period: {
-                                        $concat: [
-                                            { $toString: "$_id.year" },
-                                            "-",
-                                            {
-                                                $cond: [
-                                                    { $lt: ["$_id.month", 10] },
-                                                    { $concat: ["0", { $toString: "$_id.month" }] },
-                                                    { $toString: "$_id.month" },
+                                    period: groupBy === "day"
+                                        ? {
+                                            $concat: [
+                                                { $toString: "$_id.year" }, "-",
+                                                { $cond: [{ $lt: ["$_id.month", 10] }, { $concat: ["0", { $toString: "$_id.month" }] }, { $toString: "$_id.month" }] }, "-",
+                                                { $cond: [{ $lt: ["$_id.day", 10] }, { $concat: ["0", { $toString: "$_id.day" }] }, { $toString: "$_id.day" }] },
+                                            ],
+                                        }
+                                        : groupBy === "week"
+                                            ? {
+                                                $concat: [
+                                                    { $toString: "$_id.year" }, "-W",
+                                                    { $cond: [{ $lt: ["$_id.week", 10] }, { $concat: ["0", { $toString: "$_id.week" }] }, { $toString: "$_id.week" }] },
+                                                ],
+                                            }
+                                            : {
+                                                $concat: [
+                                                    { $toString: "$_id.year" }, "-",
+                                                    { $cond: [{ $lt: ["$_id.month", 10] }, { $concat: ["0", { $toString: "$_id.month" }] }, { $toString: "$_id.month" }] },
                                                 ],
                                             },
-                                        ],
-                                    },
                                     total: 1,
                                     open: 1,
                                     resolved: 1,
@@ -1421,6 +1477,7 @@ export class IncidentsRepository {
             temporal: (result as any).temporal as TemporalStatItem[],
             byOperator: (result as any).byOperator as OperatorStatItem[],
             byPriority: (result as any).byPriority as PriorityStatItem[],
+            groupBy,
         };
     }
 }
