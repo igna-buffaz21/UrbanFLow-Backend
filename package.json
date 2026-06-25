@@ -25,7 +25,8 @@
     "multer": "^2.1.1",
     "sharp": "^0.34.5",
     "shpjs": "^6.2.0",
-    "svix": "^1.96.0"
+    "svix": "^1.96.0",
+    "systeminformation": "^5.31.11"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
