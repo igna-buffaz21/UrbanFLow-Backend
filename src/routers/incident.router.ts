@@ -5,7 +5,7 @@ import { uploadIncidentImage } from "../middlewares/upload.middleware";
 
 const router = Router()
 
-router.get("/feed", IncidentsController.getFeed);
+router.get("/feed",requireAuth, IncidentsController.getFeed);
 router.get("/me", requireAuth, IncidentsController.obtenerMisIncidentes)
 router.get("/assigned", requireAuth, IncidentsController.obtenerAsignados);
 router.get("/", requireAuth, IncidentsController.obtenerTodos)
