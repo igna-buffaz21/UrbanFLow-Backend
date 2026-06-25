@@ -249,6 +249,7 @@ export class IncidentsController {
             next(err);
         }
     }
+
     static async getClosedIncidentsHistory(req: Request, res: Response, next: NextFunction) {
         try {
             const { userId } = getAuth(req);
@@ -263,7 +264,6 @@ export class IncidentsController {
             next(err);
         }
     }
-
     static async getFrequencyStats(req: Request, res: Response, next: NextFunction) {
         try {
             const { userId } = getAuth(req);
@@ -299,7 +299,7 @@ export class IncidentsController {
             next(err);
         }
     }
-    
+
     static async getExtendedStats(req: Request, res: Response, next: NextFunction) {
         try {
             const { userId } = getAuth(req);

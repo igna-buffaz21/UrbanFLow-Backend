@@ -532,7 +532,9 @@ export class IncidentsService {
             throw new Error("No tenés permisos para actualizar el estado");
         }
 
-        const incident = await IncidentsRepository.getIncidentById(new ObjectId(incidentId));
+        const incident = await IncidentsRepository.getIncidentById(
+            new ObjectId(incidentId)
+        );
 
         if (!incident) {
             throw new Error("El incidente no existe");
@@ -547,10 +549,31 @@ export class IncidentsService {
             }
         }
 
+        if (authenticatedUser.role === USER_ROLES.CITIZEN) {
+            const isOwner = incident.createdBy?.toString() === authenticatedUser.id;
+
+            if (!isOwner) {
+                throw new Error("Solo podés cancelar tus propios incidentes");
+            }
+
+            if (status !== "canceled") {
+                throw new Error("El ciudadano solo puede cancelar sus incidentes");
+            }
+
+            return await IncidentsRepository.actualizarEstado(
+                new ObjectId(incidentId),
+                status,
+                undefined,
+                authenticatedUser.id,
+                undefined
+            );
+        }
+
         if (status === "rejected") {
             if (!["open", "in_review"].includes(incident.status)) {
                 throw new Error("Solo podés rechazar incidentes abiertos o en revisión");
             }
+
             if (!rejectionReason || rejectionReason.trim() === "") {
                 throw new Error("El motivo de rechazo es obligatorio");
             }
@@ -565,31 +588,25 @@ export class IncidentsService {
             }
 
             if (!["assigned", "in_progress", "resolved"].includes(status)) {
-                throw new Error("El operador solo puede usar los estados asignado, en progreso o resuelto");
+                throw new Error(
+                    "El operador solo puede usar los estados asignado, en progreso o resuelto"
+                );
             }
 
             if (status === "resolved") {
                 if (incident.status !== "in_progress") {
-                    const error = new Error("Para marcar como resuelto, primero el incidente debe estar en progreso");
+                    const error = new Error(
+                        "Para marcar como resuelto, primero el incidente debe estar en progreso"
+                    );
                     (error as any).statusCode = 400;
                     throw error;
                 }
 
                 if (!image) {
-                    throw new Error("Para resolver el incidente tenés que subir una foto");
+                    throw new Error(
+                        "Para resolver el incidente tenés que subir una foto"
+                    );
                 }
-            }
-        }
-
-        if (authenticatedUser.role === USER_ROLES.CITIZEN) {
-            const isOwner = incident.createdBy?.toString() === authenticatedUser.id;
-
-            if (!isOwner) {
-                throw new Error("Solo podés cancelar tus propios incidentes");
-            }
-
-            if (status !== "rejected") {
-                throw new Error("El ciudadano solo puede cancelar sus incidentes");
             }
         }
 
@@ -598,7 +615,13 @@ export class IncidentsService {
         if (status === "resolved" && image) {
             const processedImage = await ImageService.processImage(image);
             const publicId = ImageTypes.buildResolutionImageName(incidentId);
-            const uploadedImage = await CloudinaryRepository.uploadProcessedImage(processedImage, publicId);
+
+            const uploadedImage =
+                await CloudinaryRepository.uploadProcessedImage(
+                    processedImage,
+                    publicId
+                );
+
             resolutionPhotoUrl = uploadedImage.secure_url;
         }
 
@@ -606,8 +629,10 @@ export class IncidentsService {
             new ObjectId(incidentId),
             status,
             resolutionPhotoUrl,
-            status === "closed" || status === "rejected" ? authenticatedUser.id : undefined,
-            status === "rejected" ? rejectionReason : undefined,
+            status === "closed" || status === "rejected" || status === "canceled"
+                ? authenticatedUser.id
+                : undefined,
+            status === "rejected" ? rejectionReason : undefined
         );
     }
 

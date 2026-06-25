@@ -260,6 +260,20 @@ export class UserRepository {
         }
     }
 
+    static async updateByClerkId(clerkId: string, data: Partial<User>): Promise<User | null> {
+        try {
+            const db = mongoDb();
+
+            return await db.collection<User>(COLLECTION_NAMES.USERS).findOneAndUpdate(
+            { clerkId },
+            { $set: data },
+            { returnDocument: "after" }
+            );
+        } catch (err) {
+            throw new Error("Error al sincronizar usuario desde Clerk: " + err);
+        }
+    }
+
     static async getCitizenStats(municipalityId: string, groupBy: "day" | "week" | "month" = "month"): Promise<CitizenStatsResult> {
         const db = mongoDb();
         const now = new Date();
