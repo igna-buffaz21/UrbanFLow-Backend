@@ -1030,10 +1030,16 @@ export class IncidentsRepository {
                     $group: {
                         _id: {
                             $cond: [
-                                { $eq: [{ $type: "$categoryId" }, "string"] },
-                                { $toObjectId: "$categoryId" },
-                                "$categoryId",
-                            ],
+                                { $eq: ["$categoryId", null] },
+                                null,
+                                {
+                                    $cond: [
+                                        { $eq: [{ $type: "$categoryId" }, "string"] },
+                                        { $toObjectId: "$categoryId" },
+                                        "$categoryId",
+                                    ]
+                                }
+                            ]
                         },
                         total: { $sum: 1 },
                         open: { $sum: { $cond: [{ $eq: ["$status", "open"] }, 1, 0] } },
@@ -1047,9 +1053,15 @@ export class IncidentsRepository {
                     $addFields: {
                         _id: {
                             $cond: [
-                                { $eq: [{ $type: "$_id" }, "objectId"] },
-                                "$_id",
-                                { $toObjectId: "$_id" }
+                                { $eq: ["$_id", null] },
+                                null,
+                                {
+                                    $cond: [
+                                        { $eq: [{ $type: "$_id" }, "objectId"] },
+                                        "$_id",
+                                        { $toObjectId: "$_id" }
+                                    ]
+                                }
                             ]
                         }
                     }
@@ -1136,7 +1148,19 @@ export class IncidentsRepository {
                         byCategory: [
                             {
                                 $group: {
-                                    _id: "$categoryId",
+                                    _id: {
+                                        $cond: [
+                                            { $eq: ["$categoryId", null] },
+                                            null,
+                                            {
+                                                $cond: [
+                                                    { $eq: [{ $type: "$categoryId" }, "string"] },
+                                                    { $toObjectId: "$categoryId" },
+                                                    "$categoryId",
+                                                ]
+                                            }
+                                        ]
+                                    },
                                     total: { $sum: 1 },
                                     closed: {
                                         $sum: { $cond: [{ $eq: ["$status", "closed"] }, 1, 0] },
@@ -1170,8 +1194,8 @@ export class IncidentsRepository {
                                 $project: {
                                     _id: 0,
                                     categoryId: { $toString: "$_id" },
-                                    categoryName: "$category.name",
-                                    categoryLabel: "$category.label",
+                                    categoryName: { $ifNull: ["$category.name", "Sin categoría"] },
+                                    categoryLabel: { $ifNull: ["$category.label", "Sin categoría"] },
                                     total: 1,
                                     closed: 1,
                                     closureRate: {
