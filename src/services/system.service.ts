@@ -1,0 +1,806 @@
+import { ObjectId } from "mongodb";
+import * as si from "systeminformation";
+import type { Systeminformation } from "systeminformation";
+import { mongoDb } from "../config/mongodb.config";
+import { COLLECTION_NAMES } from "../data/types/global/const.global";
+import {
+    SystemCurrentResponse,
+    SystemHistoryItem,
+    SystemHistoryRange,
+    SystemMetric,
+    SystemMunicipalityUsageItem,
+    SystemMunicipalityUsageResponse,
+    SystemOverviewResponse,
+    SystemResourceMetrics,
+    SystemServiceStatus
+} from "../data/types/system/system.types";
+
+const BYTES_IN_MB = 1024 * 1024;
+const BYTES_IN_GB = 1024 * 1024 * 1024;
+const METRICS_SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
+const MONTHLY_INCIDENT_LIMIT = 300;
+const RANGE_DAYS: Record<SystemHistoryRange, number> = {
+    day: 1,
+    week: 7,
+    month: 30,
+    year: 365
+};
+const ACTIVE_INCIDENT_STATUSES = ["in_review", "open", "assigned", "in_progress"];
+
+type SystemMetricHistoryDocument = SystemMetric & {
+    cpu?: {
+        usagePercent?: number;
+    };
+    memory?: {
+        usagePercent?: number;
+        usedMb?: number;
+        availableMb?: number;
+    };
+    disk?: {
+        usagePercent?: number;
+        usedGb?: number;
+        freeGb?: number;
+    };
+};
+
+interface MunicipalityUsageBase {
+    id: string;
+    name: string;
+    status: string;
+    district: {
+        id: string;
+        name: string;
+    } | null;
+}
+
+interface IncidentUsageCount {
+    _id: ObjectId;
+    created: number;
+    active: number;
+    resolved: number;
+    closed: number;
+    rejected: number;
+    canceled: number;
+    lastIncidentAt: Date | null;
+}
+
+interface IncidentUsageGroupCount {
+    _id: {
+        municipalityId: ObjectId;
+        value?: string;
+    };
+    count: number;
+}
+
+export class SystemService {
+    private static metricsScheduler: NodeJS.Timeout | null = null;
+
+    static async getCurrent(): Promise<SystemCurrentResponse> {
+        const [metrics, services] = await Promise.all([
+            this.getResourceMetrics(),
+            this.getServicesStatus()
+        ]);
+
+        return {
+            ...metrics,
+            services
+        };
+    }
+
+    static async getOverview(): Promise<SystemOverviewResponse> {
+        const db = mongoDb();
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const last7DaysStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+        const [
+            totalUsers,
+            usersByRole,
+            usersByStatus,
+            newUsersToday,
+            newUsersLast7Days,
+            totalIncidents,
+            activeIncidents,
+            incidentsByStatus,
+            incidentsByPriority,
+            incidentsToday,
+            incidentsLast7Days,
+            totalMunicipalities,
+            municipalitiesByStatus,
+            totalDistricts,
+            totalSubDistricts,
+            activeSubDistricts,
+            totalCategories,
+            totalReports,
+            totalComments,
+            visibleComments,
+            totalPendingIncidents,
+            pendingDuplicateConfirmations
+        ] = await Promise.all([
+            db.collection(COLLECTION_NAMES.USERS).countDocuments(),
+            this.countByField(COLLECTION_NAMES.USERS, "role"),
+            this.countByField(COLLECTION_NAMES.USERS, "status"),
+            db.collection(COLLECTION_NAMES.USERS).countDocuments({ createdAt: { $gte: todayStart } }),
+            db.collection(COLLECTION_NAMES.USERS).countDocuments({ createdAt: { $gte: last7DaysStart } }),
+            db.collection(COLLECTION_NAMES.INCIDENTS).countDocuments(),
+            db.collection(COLLECTION_NAMES.INCIDENTS).countDocuments({
+                status: { $in: ACTIVE_INCIDENT_STATUSES }
+            }),
+            this.countByField(COLLECTION_NAMES.INCIDENTS, "status"),
+            this.countByField(COLLECTION_NAMES.INCIDENTS, "priority"),
+            db.collection(COLLECTION_NAMES.INCIDENTS).countDocuments({ createdAt: { $gte: todayStart } }),
+            db.collection(COLLECTION_NAMES.INCIDENTS).countDocuments({ createdAt: { $gte: last7DaysStart } }),
+            db.collection(COLLECTION_NAMES.MUNICIPALITIES).countDocuments(),
+            this.countByField(COLLECTION_NAMES.MUNICIPALITIES, "status"),
+            db.collection(COLLECTION_NAMES.DISTRICTS).countDocuments(),
+            db.collection(COLLECTION_NAMES.SUB_DISTRICTS).countDocuments(),
+            db.collection(COLLECTION_NAMES.SUB_DISTRICTS).countDocuments({ status: "active" }),
+            db.collection(COLLECTION_NAMES.CATEGORIES).countDocuments(),
+            db.collection(COLLECTION_NAMES.INCIDENT_REPORTS).countDocuments(),
+            db.collection(COLLECTION_NAMES.INCIDENT_COMMENTS).countDocuments(),
+            db.collection(COLLECTION_NAMES.INCIDENT_COMMENTS).countDocuments({ status: "visible" }),
+            db.collection(COLLECTION_NAMES.PENDING_INCIDENTS).countDocuments(),
+            db.collection(COLLECTION_NAMES.PENDING_INCIDENTS).countDocuments({
+                status: "waiting_duplicate_confirmation"
+            })
+        ]);
+
+        return {
+            generatedAt: new Date(),
+            users: {
+                total: totalUsers,
+                active: this.getCount(usersByStatus, "active"),
+                pending: this.getCount(usersByStatus, "pending"),
+                inactive: this.getCount(usersByStatus, "inactive"),
+                blocked: this.getCount(usersByStatus, "blocked"),
+                newToday: newUsersToday,
+                newLast7Days: newUsersLast7Days,
+                byRole: usersByRole,
+                byStatus: usersByStatus
+            },
+            incidents: {
+                total: totalIncidents,
+                active: activeIncidents,
+                resolved: this.getCount(incidentsByStatus, "resolved"),
+                closed: this.getCount(incidentsByStatus, "closed"),
+                rejected: this.getCount(incidentsByStatus, "rejected"),
+                canceled: this.getCount(incidentsByStatus, "canceled"),
+                createdToday: incidentsToday,
+                createdLast7Days: incidentsLast7Days,
+                byStatus: incidentsByStatus,
+                byPriority: incidentsByPriority
+            },
+            municipalities: {
+                total: totalMunicipalities,
+                active: this.getCount(municipalitiesByStatus, "active"),
+                inactive: this.getCount(municipalitiesByStatus, "inactive"),
+                byStatus: municipalitiesByStatus
+            },
+            coverage: {
+                districts: totalDistricts,
+                subDistricts: totalSubDistricts,
+                activeSubDistricts,
+                categories: totalCategories
+            },
+            engagement: {
+                reports: totalReports,
+                comments: totalComments,
+                visibleComments,
+                pendingIncidents: totalPendingIncidents,
+                pendingDuplicateConfirmations
+            }
+        };
+    }
+
+    static async getMunicipalityUsage(query: {
+        municipalityId?: unknown;
+        month?: unknown;
+    }): Promise<SystemMunicipalityUsageResponse> {
+        const db = mongoDb();
+        const monthRange = this.resolveMonthRange(query.month);
+        const municipalityId = this.resolveOptionalObjectId(query.municipalityId, "municipalityId inválido");
+        const municipalityMatch = municipalityId ? { _id: municipalityId } : {};
+        const incidentMatch: Record<string, unknown> = {
+            createdAt: {
+                $gte: monthRange.from,
+                $lt: monthRange.to
+            }
+        };
+
+        if (municipalityId) {
+            incidentMatch.municipalityId = municipalityId;
+        }
+
+        const [
+            municipalities,
+            incidentTotals,
+            statusCounts,
+            priorityCounts
+        ] = await Promise.all([
+            db.collection(COLLECTION_NAMES.MUNICIPALITIES)
+                .aggregate<MunicipalityUsageBase>([
+                    { $match: municipalityMatch },
+                    {
+                        $lookup: {
+                            from: COLLECTION_NAMES.DISTRICTS,
+                            localField: "districtId",
+                            foreignField: "_id",
+                            as: "districtData"
+                        }
+                    },
+                    {
+                        $unwind: {
+                            path: "$districtData",
+                            preserveNullAndEmptyArrays: true
+                        }
+                    },
+                    {
+                        $project: {
+                            _id: 0,
+                            id: { $toString: "$_id" },
+                            name: 1,
+                            status: 1,
+                            district: {
+                                $cond: [
+                                    "$districtData",
+                                    {
+                                        id: { $toString: "$districtData._id" },
+                                        name: "$districtData.name"
+                                    },
+                                    null
+                                ]
+                            }
+                        }
+                    }
+                ])
+                .toArray(),
+            db.collection(COLLECTION_NAMES.INCIDENTS)
+                .aggregate<IncidentUsageCount>([
+                    { $match: incidentMatch },
+                    {
+                        $group: {
+                            _id: "$municipalityId",
+                            created: { $sum: 1 },
+                            active: {
+                                $sum: {
+                                    $cond: [{ $in: ["$status", ACTIVE_INCIDENT_STATUSES] }, 1, 0]
+                                }
+                            },
+                            resolved: {
+                                $sum: { $cond: [{ $eq: ["$status", "resolved"] }, 1, 0] }
+                            },
+                            closed: {
+                                $sum: { $cond: [{ $eq: ["$status", "closed"] }, 1, 0] }
+                            },
+                            rejected: {
+                                $sum: { $cond: [{ $eq: ["$status", "rejected"] }, 1, 0] }
+                            },
+                            canceled: {
+                                $sum: { $cond: [{ $eq: ["$status", "canceled"] }, 1, 0] }
+                            },
+                            lastIncidentAt: { $max: "$createdAt" }
+                        }
+                    }
+                ])
+                .toArray(),
+            this.countIncidentsByField(incidentMatch, "status"),
+            this.countIncidentsByField(incidentMatch, "priority")
+        ]);
+
+        if (municipalityId && municipalities.length === 0) {
+            const error = new Error("Municipalidad no encontrada");
+            (error as any).statusCode = 404;
+            throw error;
+        }
+
+        const totalsByMunicipality = new Map(
+            incidentTotals.map((item) => [item._id.toString(), item])
+        );
+        const statusByMunicipality = this.mapGroupedCountsByMunicipality(statusCounts);
+        const priorityByMunicipality = this.mapGroupedCountsByMunicipality(priorityCounts);
+        const elapsedDays = this.calculateElapsedDaysInMonth(monthRange.from, monthRange.to);
+        const daysInMonth = this.getDaysInMonth(monthRange.year, monthRange.monthIndex);
+
+        const usageItems = municipalities.map<SystemMunicipalityUsageItem>((municipality) => {
+            const totals = totalsByMunicipality.get(municipality.id);
+            const created = totals?.created ?? 0;
+            const usagePercent = this.calculatePercent(created, MONTHLY_INCIDENT_LIMIT);
+            const projectedMonthlyIncidents = this.roundToTwo((created / elapsedDays) * daysInMonth);
+
+            return {
+                municipality,
+                monthlyLimit: MONTHLY_INCIDENT_LIMIT,
+                month: monthRange.monthKey,
+                incidents: {
+                    created,
+                    remaining: Math.max(MONTHLY_INCIDENT_LIMIT - created, 0),
+                    usagePercent,
+                    exceededLimit: created > MONTHLY_INCIDENT_LIMIT,
+                    nearLimit: usagePercent >= 80 && created <= MONTHLY_INCIDENT_LIMIT,
+                    active: totals?.active ?? 0,
+                    resolved: totals?.resolved ?? 0,
+                    closed: totals?.closed ?? 0,
+                    rejected: totals?.rejected ?? 0,
+                    canceled: totals?.canceled ?? 0,
+                    byStatus: statusByMunicipality.get(municipality.id) ?? {},
+                    byPriority: priorityByMunicipality.get(municipality.id) ?? {},
+                    lastIncidentAt: totals?.lastIncidentAt ?? null
+                },
+                projection: {
+                    elapsedDays,
+                    daysInMonth,
+                    averagePerDay: this.roundToTwo(created / elapsedDays),
+                    projectedMonthlyIncidents,
+                    projectedUsagePercent: this.calculatePercent(
+                        projectedMonthlyIncidents,
+                        MONTHLY_INCIDENT_LIMIT
+                    )
+                }
+            };
+        });
+
+        const incidentsCreated = usageItems.reduce((sum, item) => sum + item.incidents.created, 0);
+
+        return {
+            generatedAt: new Date(),
+            month: monthRange.monthKey,
+            from: monthRange.from,
+            to: monthRange.to,
+            monthlyLimit: MONTHLY_INCIDENT_LIMIT,
+            totals: {
+                municipalities: usageItems.length,
+                incidentsCreated,
+                exceededLimit: usageItems.filter((item) => item.incidents.exceededLimit).length,
+                nearLimit: usageItems.filter((item) => item.incidents.nearLimit).length
+            },
+            municipalities: usageItems
+        };
+    }
+
+    static startMetricsScheduler(intervalMs = METRICS_SNAPSHOT_INTERVAL_MS): void {
+        if (this.metricsScheduler) {
+            return;
+        }
+
+        void this.saveMetricSnapshot();
+
+        this.metricsScheduler = setInterval(() => {
+            void this.saveMetricSnapshot();
+        }, intervalMs);
+    }
+
+    static async getHistory(query: {
+        range?: unknown;
+        limit?: unknown;
+        from?: unknown;
+        to?: unknown;
+    }): Promise<SystemHistoryItem[]> {
+        const { fromDate, toDate, limit } = this.resolveHistoryQuery(query);
+        const db = mongoDb();
+        const createdAtQuery: { $gte: Date; $lte?: Date } = { $gte: fromDate };
+
+        if (toDate) {
+            createdAtQuery.$lte = toDate;
+        }
+
+        const collection = db.collection<SystemMetric>(COLLECTION_NAMES.SYSTEM_METRICS);
+
+        if (limit) {
+            const latestItems = await collection
+                .find({ createdAt: createdAtQuery })
+                .sort({ createdAt: -1 })
+                .limit(limit)
+                .toArray();
+
+            return latestItems.reverse().map((item) => this.mapHistoryItem(item));
+        }
+
+        const items = await collection
+            .find({ createdAt: createdAtQuery })
+            .sort({ createdAt: 1 })
+            .toArray();
+
+        return items.map((item) => this.mapHistoryItem(item));
+    }
+
+    private static async countByField(
+        collectionName: string,
+        field: string
+    ): Promise<Record<string, number>> {
+        const db = mongoDb();
+        const items = await db
+            .collection(collectionName)
+            .aggregate<{ _id?: unknown; count: number }>([
+                {
+                    $group: {
+                        _id: `$${field}`,
+                        count: { $sum: 1 }
+                    }
+                }
+            ])
+            .toArray();
+
+        return items.reduce<Record<string, number>>((acc, item) => {
+            const key = item._id ? String(item._id) : "unknown";
+            acc[key] = item.count;
+            return acc;
+        }, {});
+    }
+
+    private static async countIncidentsByField(
+        match: Record<string, unknown>,
+        field: string
+    ): Promise<IncidentUsageGroupCount[]> {
+        const db = mongoDb();
+
+        return db
+            .collection(COLLECTION_NAMES.INCIDENTS)
+            .aggregate<IncidentUsageGroupCount>([
+                { $match: match },
+                {
+                    $group: {
+                        _id: {
+                            municipalityId: "$municipalityId",
+                            value: `$${field}`
+                        },
+                        count: { $sum: 1 }
+                    }
+                }
+            ])
+            .toArray();
+    }
+
+    private static mapGroupedCountsByMunicipality(
+        items: IncidentUsageGroupCount[]
+    ): Map<string, Record<string, number>> {
+        return items.reduce<Map<string, Record<string, number>>>((acc, item) => {
+            const municipalityId = item._id.municipalityId.toString();
+            const key = item._id.value ? String(item._id.value) : "unknown";
+            const municipalityCounts = acc.get(municipalityId) ?? {};
+
+            municipalityCounts[key] = item.count;
+            acc.set(municipalityId, municipalityCounts);
+
+            return acc;
+        }, new Map());
+    }
+
+    private static resolveOptionalObjectId(value: unknown, message: string): ObjectId | undefined {
+        if (!value) {
+            return undefined;
+        }
+
+        if (typeof value !== "string" || !ObjectId.isValid(value)) {
+            const error = new Error(message);
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        return new ObjectId(value);
+    }
+
+    private static resolveMonthRange(value: unknown): {
+        monthKey: string;
+        from: Date;
+        to: Date;
+        year: number;
+        monthIndex: number;
+    } {
+        const now = new Date();
+        const defaultMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+        const monthKey = value ?? defaultMonth;
+
+        if (typeof monthKey !== "string" || !/^\d{4}-\d{2}$/.test(monthKey)) {
+            const error = new Error("Month inválido. Usá formato YYYY-MM");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        const [yearValue, monthValue] = monthKey.split("-").map(Number);
+
+        if (monthValue < 1 || monthValue > 12) {
+            const error = new Error("Month inválido. Usá un mes entre 01 y 12");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        const monthIndex = monthValue - 1;
+
+        return {
+            monthKey,
+            from: new Date(Date.UTC(yearValue, monthIndex, 1, 0, 0, 0, 0)),
+            to: new Date(Date.UTC(yearValue, monthIndex + 1, 1, 0, 0, 0, 0)),
+            year: yearValue,
+            monthIndex
+        };
+    }
+
+    private static calculateElapsedDaysInMonth(from: Date, to: Date): number {
+        const now = new Date();
+        const end = now < from ? from : now > to ? to : now;
+        const elapsedMs = end.getTime() - from.getTime();
+        const elapsedDays = Math.ceil(elapsedMs / (24 * 60 * 60 * 1000));
+
+        return Math.max(elapsedDays, 1);
+    }
+
+    private static getDaysInMonth(year: number, monthIndex: number): number {
+        return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+    }
+
+    private static async saveMetricSnapshot(): Promise<SystemMetric | null> {
+        try {
+            const db = mongoDb();
+            const metrics = await this.getResourceMetrics();
+            const snapshot = this.mapMetricSnapshot(metrics);
+            const result = await db.collection<SystemMetric>(COLLECTION_NAMES.SYSTEM_METRICS).insertOne(snapshot);
+
+            return {
+                ...snapshot,
+                _id: result.insertedId
+            };
+        }
+        catch (err) {
+            console.warn("No se pudo guardar snapshot de métricas del sistema:", err);
+            return null;
+        }
+    }
+
+    private static async getResourceMetrics(): Promise<SystemResourceMetrics> {
+        const [cpuData, memoryData, diskData] = await Promise.all([
+            si.currentLoad(),
+            si.mem(),
+            si.fsSize()
+        ]);
+        const timeData = si.time();
+        const disk = this.resolvePrimaryDisk(diskData);
+        const memory = this.resolveMemoryUsage(memoryData);
+
+        return {
+            cpu: {
+                usagePercent: this.roundToTwo(cpuData.currentLoad)
+            },
+            memory: {
+                totalMb: this.bytesToMb(memoryData.total),
+                usedMb: this.bytesToMb(memory.used),
+                freeMb: this.bytesToMb(memory.free),
+                availableMb: this.bytesToMb(memory.available),
+                buffCacheMb: this.bytesToMb(memory.buffCache),
+                usagePercent: this.calculatePercent(memory.used, memoryData.total)
+            },
+            disk: {
+                totalGb: this.bytesToGb(disk.size),
+                usedGb: this.bytesToGb(disk.used),
+                freeGb: this.bytesToGb(disk.available),
+                usagePercent: this.calculatePercent(disk.used, disk.size)
+            },
+            uptime: {
+                seconds: Math.floor(timeData.uptime)
+            }
+        };
+    }
+
+    private static mapMetricSnapshot(metrics: SystemResourceMetrics): SystemMetric {
+        return {
+            cpuUsagePercent: metrics.cpu.usagePercent,
+            memoryUsagePercent: metrics.memory.usagePercent,
+            diskUsagePercent: metrics.disk.usagePercent,
+            memoryUsedMb: metrics.memory.usedMb,
+            memoryAvailableMb: metrics.memory.availableMb,
+            diskUsedGb: metrics.disk.usedGb,
+            diskFreeGb: metrics.disk.freeGb,
+            createdAt: new Date()
+        };
+    }
+
+    private static resolveMemoryUsage(memoryData: Systeminformation.MemData): {
+        used: number;
+        free: number;
+        available: number;
+        buffCache: number;
+    } {
+        if (memoryData.available > 0 && memoryData.available <= memoryData.total) {
+            return {
+                used: memoryData.total - memoryData.available,
+                free: memoryData.free,
+                available: memoryData.available,
+                buffCache: memoryData.buffcache
+            };
+        }
+
+        return {
+            used: memoryData.used,
+            free: memoryData.free,
+            available: memoryData.free,
+            buffCache: memoryData.buffcache
+        };
+    }
+
+    private static async getServicesStatus(): Promise<SystemCurrentResponse["services"]> {
+        const unknownServices: SystemCurrentResponse["services"] = {
+            pm2: { status: "unknown" },
+            nginx: { status: "unknown" },
+            mongodb: { status: "unknown" }
+        };
+
+        try {
+            const services = await si.services("pm2,nginx,mongod,mongodb");
+
+            return {
+                pm2: {
+                    status: this.resolveServiceStatus(services, ["pm2"])
+                },
+                nginx: {
+                    status: this.resolveServiceStatus(services, ["nginx"])
+                },
+                mongodb: {
+                    status: this.resolveServiceStatus(services, ["mongod", "mongodb"])
+                }
+            };
+        }
+        catch {
+            return unknownServices;
+        }
+    }
+
+    private static resolveServiceStatus(
+        services: Systeminformation.ServicesData[],
+        names: string[]
+    ): SystemServiceStatus {
+        const normalizedNames = names.map((name) => name.toLowerCase());
+        const matches = services.filter((service) =>
+            normalizedNames.includes(service.name.toLowerCase())
+        );
+
+        if (matches.length === 0) {
+            return "unknown";
+        }
+
+        return matches.some((service) => service.running) ? "online" : "offline";
+    }
+
+    private static resolvePrimaryDisk(disks: Systeminformation.FsSizeData[]): Systeminformation.FsSizeData {
+        const rootDisk = disks.find((disk) => disk.mount === "/");
+
+        if (rootDisk) {
+            return rootDisk;
+        }
+
+        const largestDisk = [...disks].sort((a, b) => b.size - a.size)[0];
+
+        if (!largestDisk) {
+            const error = new Error("No se pudo obtener información de disco");
+            (error as any).statusCode = 500;
+            throw error;
+        }
+
+        return largestDisk;
+    }
+
+    private static resolveHistoryQuery(query: {
+        range?: unknown;
+        limit?: unknown;
+        from?: unknown;
+        to?: unknown;
+    }): {
+        fromDate: Date;
+        toDate?: Date;
+        limit?: number;
+    } {
+        const range = this.resolveRangeQuery(query.range);
+
+        if (!range) {
+            const error = new Error("Range inválido. Usá day, week, month o year");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        const fromDate = query.from
+            ? this.resolveDateQuery(query.from, "From inválido")
+            : new Date(Date.now() - RANGE_DAYS[range] * 24 * 60 * 60 * 1000);
+        const toDate = query.to ? this.resolveDateQuery(query.to, "To inválido") : undefined;
+
+        if (toDate && toDate < fromDate) {
+            const error = new Error("To debe ser posterior a from");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        if (!query.limit) {
+            return { fromDate, toDate };
+        }
+
+        if (typeof query.limit !== "string") {
+            const error = new Error("Limit inválido");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        const limit = Number(query.limit);
+
+        if (!Number.isInteger(limit) || limit <= 0) {
+            const error = new Error("Limit debe ser un número entero positivo");
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        return { fromDate, toDate, limit };
+    }
+
+    private static resolveRangeQuery(value: unknown): SystemHistoryRange | null {
+        if (!value) {
+            return "week";
+        }
+
+        if (typeof value !== "string") {
+            return null;
+        }
+
+        const range = value.trim().toLowerCase();
+
+        if (!this.isValidRange(range)) {
+            return null;
+        }
+
+        return range;
+    }
+
+    private static isValidRange(range: string): range is SystemHistoryRange {
+        return range === "day" || range === "week" || range === "month" || range === "year";
+    }
+
+    private static resolveDateQuery(value: unknown, message: string): Date {
+        if (typeof value !== "string") {
+            const error = new Error(message);
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        const date = new Date(value);
+
+        if (Number.isNaN(date.getTime())) {
+            const error = new Error(message);
+            (error as any).statusCode = 400;
+            throw error;
+        }
+
+        return date;
+    }
+
+    private static mapHistoryItem(metric: SystemMetricHistoryDocument): SystemHistoryItem {
+        return {
+            createdAt: metric.createdAt,
+            cpuUsagePercent: metric.cpuUsagePercent ?? metric.cpu?.usagePercent ?? 0,
+            memoryUsagePercent: metric.memoryUsagePercent ?? metric.memory?.usagePercent ?? 0,
+            diskUsagePercent: metric.diskUsagePercent ?? metric.disk?.usagePercent ?? 0,
+            memoryUsedMb: metric.memoryUsedMb ?? metric.memory?.usedMb ?? 0,
+            memoryAvailableMb: metric.memoryAvailableMb ?? metric.memory?.availableMb ?? 0,
+            diskUsedGb: metric.diskUsedGb ?? metric.disk?.usedGb ?? 0,
+            diskFreeGb: metric.diskFreeGb ?? metric.disk?.freeGb ?? 0
+        };
+    }
+
+    private static bytesToMb(bytes: number): number {
+        return this.roundToTwo(bytes / BYTES_IN_MB);
+    }
+
+    private static bytesToGb(bytes: number): number {
+        return this.roundToTwo(bytes / BYTES_IN_GB);
+    }
+
+    private static calculatePercent(part: number, total: number): number {
+        if (total <= 0) {
+            return 0;
+        }
+
+        return this.roundToTwo((part / total) * 100);
+    }
+
+    private static roundToTwo(value: number): number {
+        return Math.round(value * 100) / 100;
+    }
+
+    private static getCount(counts: Record<string, number>, key: string): number {
+        return counts[key] ?? 0;
+    }
+}

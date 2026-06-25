@@ -52,13 +52,8 @@ export class MunicipalityController {
         try {
             const { userId } = getAuth(req);
             const { id } = req.params;
-            const { name, districtId, status } = req.body;
 
-            const municipality = await MunicipalityService.updateMunicipality(userId!, id, {
-                name,
-                districtId,
-                status,
-            });
+            const municipality = await MunicipalityService.updateMunicipality(userId!, id);
 
             res.status(200).json(municipality);
         } catch (err) {

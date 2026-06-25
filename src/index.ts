@@ -10,6 +10,7 @@ import { requestLogger } from "./middlewares/logger.middleware";
 
 //Importacion de servicios
 import { connectMongo } from "./config/mongodb.config";
+import { SystemService } from "./services/system.service";
 
 //Importacion de rutas
 import userRoutes from "./routers/user.router";
@@ -24,6 +25,7 @@ import incidentReportRoutes from "./routers/incident-report.router";
 import iaRouterDev from "./routers/ia.router.dev";
 import subDistrictsRoutes from "./routers/sub-districts.router";
 import webhookRoutes from "./routers/webhook.router";
+import systemRoutes from "./routers/system.router";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -58,11 +60,13 @@ app.use("/api/incident-comments", incidentCommentRoutes);
 app.use("/api/incident-report", incidentReportRoutes);
 app.use("/api/ia-dev", iaRouterDev);
 app.use("/api/sub-districts", subDistrictsRoutes);
+app.use("/api/superadmin/system", systemRoutes);
 app.use(errorHandler);
 
 async function startServer() {
     try {
         await connectMongo();
+        SystemService.startMetricsScheduler();
 
         app.listen(PORT, () => {
             console.log(`Servidor corriendo en el puerto ${PORT}`);
